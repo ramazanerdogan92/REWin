@@ -5,28 +5,39 @@ function Export-REWinHealthReport {
         $Report,
 
         [Parameter(Mandatory)]
-        [string]$Path
+        [string]$Path,
+
+        [ValidateSet("EN", "TR")]
+        [string]$Language = "EN"
     )
 
     # ============================================================
-    # HELPERS
+    # HTML ENCODING
     # ============================================================
 
-    function Get-StatusClass {
-        param([string]$Status)
+    function Encode-Html {
+        param(
+            [object]$Value
+        )
 
-        switch ($Status) {
-            "CRITICAL"  { return "critical" }
-            "WARNING"   { return "warning" }
-            "GOOD"      { return "good" }
-            "EXCELLENT" { return "excellent" }
-            "OK"        { return "excellent" }
-            default     { return "neutral" }
+        if ($null -eq $Value) {
+            return ""
         }
+
+        return [System.Net.WebUtility]::HtmlEncode(
+            [string]$Value
+        )
     }
 
+
+    # ============================================================
+    # SCORE CLASS
+    # ============================================================
+
     function Get-ScoreClass {
-        param([int]$Score)
+        param(
+            [int]$Score
+        )
 
         if ($Score -ge 90) {
             return "excellent"
@@ -42,52 +53,143 @@ function Export-REWinHealthReport {
         }
     }
 
-    function Encode-Html {
-        param([object]$Value)
 
-        if ($null -eq $Value) {
-            return ""
-        }
+    # ============================================================
+    # SCORE LABEL
+    # ============================================================
 
-        return [System.Net.WebUtility]::HtmlEncode(
-            [string]$Value
+    function Get-ScoreLabel {
+        param(
+            [int]$Score
         )
+
+        if ($Score -ge 90) {
+            return "OK"
+        }
+        elseif ($Score -ge 75) {
+            return "GOOD"
+        }
+        elseif ($Score -ge 50) {
+            return "WARN"
+        }
+        else {
+            return "CRIT"
+        }
     }
 
 
     # ============================================================
-    # PREPARE DATA
+    # LANGUAGE
     # ============================================================
 
-    $GeneratedAt = Encode-Html $Report.GeneratedAt
+    if ($Language -eq "TR") {
+
+        $Title = "REWin Saglik Raporu"
+        $Subtitle = "Windows IT Tani ve Saglik Degerlendirmesi"
+
+        $AttentionRequiredText = "DIKKAT GEREKLI"
+        $NoAttentionText = "DIKKAT GEREKMIYOR"
+
+        $ModuleHealthText = "Modul Sagligi"
+        $IssuesText = "Sorunlar ve Oneriler"
+        $SystemInfoText = "Sistem Bilgileri"
+
+        $IssueText = "Sorun"
+        $CriticalText = "Kritik"
+        $WarningText = "Uyari"
+
+        $ComputerText = "Bilgisayar"
+        $ManufacturerText = "Uretici"
+        $ModelText = "Model"
+        $OSText = "Isletim Sistemi"
+        $BuildText = "Build"
+        $CPUText = "CPU"
+        $MemoryText = "Bellek"
+        $ArchitectureText = "Mimari"
+        $UptimeText = "Calisma Suresi"
+        $GeneratedText = "Olusturulma"
+
+        $ModuleNames = @{
+            System        = "Sistem"
+            Disk          = "Disk"
+            Network       = "Ag"
+            WindowsUpdate = "Windows Update"
+            EventLog      = "Event Log"
+            Crash         = "Crash"
+            Hardware      = "Donanim"
+            Security      = "Guvenlik"
+        }
+    }
+    else {
+
+        $Title = "REWin Health Report"
+        $Subtitle = "Windows IT Diagnostics and Health Assessment"
+
+        $AttentionRequiredText = "ATTENTION REQUIRED"
+        $NoAttentionText = "NO ATTENTION REQUIRED"
+
+        $ModuleHealthText = "Module Health"
+        $IssuesText = "Issues and Recommendations"
+        $SystemInfoText = "System Information"
+
+        $IssueText = "Issues"
+        $CriticalText = "Critical"
+        $WarningText = "Warnings"
+
+        $ComputerText = "Computer"
+        $ManufacturerText = "Manufacturer"
+        $ModelText = "Model"
+        $OSText = "Operating System"
+        $BuildText = "Build"
+        $CPUText = "CPU"
+        $MemoryText = "Memory"
+        $ArchitectureText = "Architecture"
+        $UptimeText = "Uptime"
+        $GeneratedText = "Generated"
+
+        $ModuleNames = @{
+            System        = "System"
+            Disk          = "Disk"
+            Network       = "Network"
+            WindowsUpdate = "Windows Update"
+            EventLog      = "Event Log"
+            Crash         = "Crash"
+            Hardware      = "Hardware"
+            Security      = "Security"
+        }
+    }
+
+
+    # ============================================================
+    # GENERAL DATA
+    # ============================================================
+
     $OverallScore = [int]$Report.OverallScore
+
     $OverallStatus = Encode-Html $Report.OverallStatus
     $Summary = Encode-Html $Report.Summary
+    $GeneratedAt = Encode-Html $Report.GeneratedAt
 
-    $StatusClass = Get-StatusClass $Report.OverallStatus
+    $OverallClass = Get-ScoreClass $OverallScore
 
-    $AttentionText = if ($Report.AttentionRequired) {
-        "ATTENTION REQUIRED"
+
+    if ($Report.AttentionRequired) {
+        $AttentionText = $AttentionRequiredText
+        $AttentionClass = "warning"
     }
     else {
-        "NO ATTENTION REQUIRED"
-    }
-
-    $AttentionClass = if ($Report.AttentionRequired) {
-        "warning"
-    }
-    else {
-        "excellent"
+        $AttentionText = $NoAttentionText
+        $AttentionClass = "excellent"
     }
 
 
     # ============================================================
-    # MODULE SCORE ROWS
+    # MODULE CARDS
     # ============================================================
 
-    $ModuleRows = ""
+    $ModuleCards = ""
 
-    $ModuleNames = @(
+    $ModuleList = @(
         "System",
         "Disk",
         "Network",
@@ -98,29 +200,44 @@ function Export-REWinHealthReport {
         "Security"
     )
 
-    foreach ($ModuleName in $ModuleNames) {
+    foreach ($ModuleName in $ModuleList) {
 
         $Score = [int]$Report.ModuleScores.$ModuleName
+
         $Class = Get-ScoreClass $Score
+        $Label = Get-ScoreLabel $Score
 
-        $DisplayName = switch ($ModuleName) {
-            "WindowsUpdate" { "Windows Update" }
-            "EventLog"      { "Event Log" }
-            default         { $ModuleName }
-        }
+        $DisplayName = Encode-Html $ModuleNames[$ModuleName]
 
-        $ModuleRows += @"
-<tr>
-    <td>$DisplayName</td>
-    <td>
-        <div class="score-row">
-            <div class="bar">
-                <div class="bar-fill $Class" style="width:${Score}%"></div>
-            </div>
-            <span class="score-value $Class">$Score</span>
+        $ModuleCards += @"
+<div class="module-card">
+
+    <div class="module-header">
+
+        <span class="module-name">
+            $DisplayName
+        </span>
+
+        <span class="module-label $Class">
+            $Label
+        </span>
+
+    </div>
+
+    <div class="module-score $Class">
+        $Score
+    </div>
+
+    <div class="module-bar">
+
+        <div
+            class="module-bar-fill $Class"
+            style="width: ${Score}%">
         </div>
-    </td>
-</tr>
+
+    </div>
+
+</div>
 "@
     }
 
@@ -137,27 +254,52 @@ function Export-REWinHealthReport {
         $Area = Encode-Html $Recommendation.Area
         $Message = Encode-Html $Recommendation.Message
 
-        $Class = Get-StatusClass $Recommendation.Severity
+        if ($Recommendation.Severity -eq "CRITICAL") {
+            $SeverityClass = "critical"
+        }
+        elseif ($Recommendation.Severity -eq "WARNING") {
+            $SeverityClass = "warning"
+        }
+        else {
+            $SeverityClass = "good"
+        }
 
         $RecommendationRows += @"
-<tr>
-    <td>
-        <span class="badge $Class">$Severity</span>
-    </td>
-    <td>$Area</td>
-    <td>$Message</td>
-</tr>
+<div class="issue-item">
+
+    <div class="issue-line $SeverityClass"></div>
+
+    <div class="issue-content">
+
+        <div class="issue-header">
+
+            <span class="severity $SeverityClass">
+                $Severity
+            </span>
+
+            <span class="issue-area">
+                $Area
+            </span>
+
+        </div>
+
+        <div class="issue-message">
+            $Message
+        </div>
+
+    </div>
+
+</div>
 "@
     }
+
 
     if ([string]::IsNullOrWhiteSpace($RecommendationRows)) {
 
         $RecommendationRows = @"
-<tr>
-    <td colspan="3" class="empty">
-        No issues detected.
-    </td>
-</tr>
+<div class="empty-message">
+    OK - No issues detected.
+</div>
 "@
     }
 
@@ -169,10 +311,10 @@ function Export-REWinHealthReport {
     $System = $Report.System
 
     $ComputerName = Encode-Html $System.ComputerName
-    $OperatingSystem = Encode-Html $System.OperatingSystem
-    $Build = Encode-Html $System.Build
     $Manufacturer = Encode-Html $System.Manufacturer
     $Model = Encode-Html $System.Model
+    $OperatingSystem = Encode-Html $System.OperatingSystem
+    $Build = Encode-Html $System.Build
     $CPU = Encode-Html $System.CPU
     $RAM = Encode-Html "$($System.RAM_GB) GB"
     $Architecture = Encode-Html $System.Architecture
@@ -185,7 +327,9 @@ function Export-REWinHealthReport {
 
     $Html = @"
 <!DOCTYPE html>
-<html lang="en">
+
+<html lang="$Language">
+
 <head>
 
 <meta charset="UTF-8">
@@ -193,7 +337,7 @@ function Export-REWinHealthReport {
 <meta name="viewport"
       content="width=device-width, initial-scale=1.0">
 
-<title>REWin Health Report</title>
+<title>$Title</title>
 
 <style>
 
@@ -204,242 +348,618 @@ function Export-REWinHealthReport {
 body {
     margin: 0;
     padding: 30px;
+
     font-family:
-        -apple-system,
-        BlinkMacSystemFont,
         "Segoe UI",
         Arial,
         sans-serif;
 
-    background: #f4f6f8;
-    color: #1f2937;
+    background: #f3f4f6;
+
+    color: #111827;
 }
 
 .container {
-    max-width: 1100px;
+    max-width: 1200px;
+
     margin: auto;
 }
 
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
 .header {
+
     background: #111827;
+
     color: white;
-    padding: 28px;
-    border-radius: 14px;
-    margin-bottom: 20px;
+
+    padding: 30px;
+
+    border-radius: 16px;
+
+    margin-bottom: 22px;
+
+    box-shadow:
+        0 8px 25px rgba(0, 0, 0, 0.08);
+}
+
+.brand {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 15px;
+}
+
+.logo {
+
+    width: 52px;
+
+    height: 52px;
+
+    border-radius: 12px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    background: #2563eb;
+
+    font-size: 20px;
+
+    font-weight: 800;
 }
 
 .header h1 {
-    margin: 0 0 8px 0;
+
+    margin: 0;
+
     font-size: 30px;
 }
 
 .header p {
-    margin: 4px 0;
+
+    margin: 5px 0 0;
+
     color: #d1d5db;
 }
 
-.card {
-    background: white;
-    border-radius: 14px;
-    padding: 24px;
-    margin-bottom: 20px;
+.generated {
 
-    box-shadow:
-        0 2px 8px rgba(0,0,0,0.06);
+    margin-top: 20px;
+
+    color: #9ca3af;
+
+    font-size: 13px;
 }
 
-.health-card {
+
+/* ============================================================
+   SUMMARY
+   ============================================================ */
+
+.summary {
+
     display: grid;
-    grid-template-columns: 220px 1fr;
+
+    grid-template-columns: 260px 1fr;
+
     gap: 30px;
-    align-items: center;
+
+    background: white;
+
+    padding: 30px;
+
+    border-radius: 16px;
+
+    margin-bottom: 22px;
+
+    box-shadow:
+        0 4px 15px rgba(0, 0, 0, 0.05);
+}
+
+.score-box {
+
+    text-align: center;
 }
 
 .score-circle {
-    width: 180px;
-    height: 180px;
+
+    width: 190px;
+
+    height: 190px;
+
+    margin: auto;
+
     border-radius: 50%;
 
     display: flex;
-    align-items: center;
-    justify-content: center;
 
-    margin: auto;
+    align-items: center;
+
+    justify-content: center;
 
     border: 12px solid #e5e7eb;
 }
 
 .score-number {
-    font-size: 42px;
-    font-weight: 700;
+
+    font-size: 48px;
+
+    font-weight: 800;
 }
 
-.score-label {
-    text-align: center;
+.score-total {
+
     margin-top: 8px;
-    font-weight: 600;
+
+    font-size: 14px;
+
+    color: #6b7280;
 }
+
+.summary-content {
+
+    display: flex;
+
+    flex-direction: column;
+
+    justify-content: center;
+}
+
+.summary-content h2 {
+
+    margin: 0 0 10px;
+
+    font-size: 28px;
+}
+
+.summary-text {
+
+    color: #6b7280;
+
+    margin-bottom: 18px;
+}
+
+.attention {
+
+    display: inline-block;
+
+    width: fit-content;
+
+    padding: 8px 14px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+
+    font-weight: 800;
+}
+
+.attention.warning {
+
+    background: #fff7ed;
+
+    color: #c2410c;
+}
+
+.attention.excellent {
+
+    background: #dcfce7;
+
+    color: #15803d;
+}
+
+.counters {
+
+    display: flex;
+
+    gap: 30px;
+
+    margin-top: 20px;
+}
+
+.counter strong {
+
+    display: block;
+
+    font-size: 22px;
+}
+
+.counter span {
+
+    font-size: 12px;
+
+    color: #6b7280;
+}
+
+
+/* ============================================================
+   COLORS
+   ============================================================ */
 
 .excellent {
+
     color: #15803d;
 }
 
 .good {
+
     color: #2563eb;
 }
 
 .warning {
-    color: #b45309;
+
+    color: #c2410c;
 }
 
 .critical {
+
     color: #b91c1c;
 }
 
-.neutral {
-    color: #6b7280;
+
+/* ============================================================
+   SECTION
+   ============================================================ */
+
+.section {
+
+    background: white;
+
+    padding: 26px;
+
+    border-radius: 16px;
+
+    margin-bottom: 22px;
+
+    box-shadow:
+        0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
-.attention {
-    display: inline-block;
-    margin-top: 12px;
+.section h2 {
 
-    padding: 7px 12px;
+    margin-top: 0;
 
-    border-radius: 20px;
-
-    font-size: 13px;
-    font-weight: 700;
-
-    background: #fff7ed;
+    font-size: 21px;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
+
+/* ============================================================
+   MODULE CARDS
+   ============================================================ */
+
+.module-grid {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 14px;
 }
 
-th {
-    text-align: left;
-    background: #f9fafb;
-    font-size: 13px;
+.module-card {
+
+    border: 1px solid #e5e7eb;
+
+    border-radius: 12px;
+
+    padding: 18px;
+
+    background: #fafafa;
 }
 
-th,
-td {
-    padding: 13px 12px;
-    border-bottom: 1px solid #e5e7eb;
-}
+.module-header {
 
-.score-row {
     display: flex;
+
+    justify-content: space-between;
+
     align-items: center;
-    gap: 12px;
 }
 
-.bar {
-    flex: 1;
-    height: 10px;
+.module-name {
+
+    font-size: 14px;
+
+    font-weight: 700;
+}
+
+.module-label {
+
+    padding: 4px 7px;
+
+    border-radius: 5px;
+
+    font-size: 9px;
+
+    font-weight: 800;
+}
+
+.module-score {
+
+    margin-top: 15px;
+
+    font-size: 34px;
+
+    font-weight: 800;
+}
+
+.module-bar {
+
+    height: 7px;
+
+    margin-top: 10px;
+
     background: #e5e7eb;
+
     border-radius: 10px;
+
     overflow: hidden;
 }
 
-.bar-fill {
+.module-bar-fill {
+
     height: 100%;
+
     border-radius: 10px;
 }
 
-.bar-fill.excellent {
+.module-bar-fill.excellent {
+
     background: #22c55e;
 }
 
-.bar-fill.good {
+.module-bar-fill.good {
+
     background: #3b82f6;
 }
 
-.bar-fill.warning {
+.module-bar-fill.warning {
+
     background: #f59e0b;
 }
 
-.bar-fill.critical {
+.module-bar-fill.critical {
+
     background: #ef4444;
 }
 
-.score-value {
-    width: 35px;
-    text-align: right;
-    font-weight: 700;
-}
+.module-label.excellent {
 
-.badge {
-    display: inline-block;
-
-    padding: 5px 9px;
-
-    border-radius: 6px;
-
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.badge.warning {
-    background: #fef3c7;
-}
-
-.badge.critical {
-    background: #fee2e2;
-}
-
-.badge.excellent {
     background: #dcfce7;
 }
 
+.module-label.good {
+
+    background: #dbeafe;
+}
+
+.module-label.warning {
+
+    background: #fef3c7;
+}
+
+.module-label.critical {
+
+    background: #fee2e2;
+}
+
+
+/* ============================================================
+   ISSUES
+   ============================================================ */
+
+.issue-item {
+
+    display: flex;
+
+    gap: 15px;
+
+    padding: 16px 0;
+
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.issue-item:last-child {
+
+    border-bottom: none;
+}
+
+.issue-line {
+
+    width: 5px;
+
+    border-radius: 5px;
+
+    flex-shrink: 0;
+}
+
+.issue-line.warning {
+
+    background: #f59e0b;
+}
+
+.issue-line.critical {
+
+    background: #ef4444;
+}
+
+.issue-content {
+
+    flex: 1;
+}
+
+.issue-header {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    margin-bottom: 6px;
+}
+
+.severity {
+
+    padding: 4px 8px;
+
+    border-radius: 5px;
+
+    font-size: 10px;
+
+    font-weight: 800;
+}
+
+.severity.warning {
+
+    background: #fef3c7;
+}
+
+.severity.critical {
+
+    background: #fee2e2;
+}
+
+.issue-area {
+
+    font-size: 13px;
+
+    font-weight: 700;
+}
+
+.issue-message {
+
+    font-size: 14px;
+
+    color: #4b5563;
+}
+
+.empty-message {
+
+    padding: 25px;
+
+    text-align: center;
+
+    color: #15803d;
+
+    font-weight: 600;
+}
+
+
+/* ============================================================
+   SYSTEM INFORMATION
+   ============================================================ */
+
 .info-grid {
+
     display: grid;
+
     grid-template-columns:
-        repeat(auto-fit, minmax(220px, 1fr));
+        repeat(3, 1fr);
 
     gap: 12px;
 }
 
 .info-item {
+
+    padding: 15px;
+
+    border-radius: 10px;
+
     background: #f9fafb;
-    padding: 14px;
-    border-radius: 8px;
 }
 
 .info-label {
-    font-size: 12px;
+
+    font-size: 11px;
+
     color: #6b7280;
+
+    text-transform: uppercase;
 }
 
 .info-value {
-    margin-top: 4px;
-    font-weight: 600;
+
+    margin-top: 5px;
+
+    font-size: 14px;
+
+    font-weight: 650;
+
+    word-break: break-word;
 }
 
-.empty {
-    text-align: center;
-    padding: 25px;
-    color: #15803d;
-}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
 
 .footer {
+
     text-align: center;
-    color: #6b7280;
+
+    padding: 20px;
+
+    color: #9ca3af;
+
     font-size: 12px;
-    padding: 15px;
 }
 
-@media (max-width: 700px) {
 
-    body {
-        padding: 15px;
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 900px) {
+
+    .module-grid {
+
+        grid-template-columns:
+            repeat(2, 1fr);
     }
 
-    .health-card {
+    .info-grid {
+
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+}
+
+
+@media (max-width: 650px) {
+
+    body {
+
+        padding: 12px;
+    }
+
+    .summary {
+
         grid-template-columns: 1fr;
+    }
+
+    .module-grid {
+
+        grid-template-columns: 1fr;
+    }
+
+    .info-grid {
+
+        grid-template-columns: 1fr;
+    }
+
+    .counters {
+
+        flex-wrap: wrap;
     }
 }
 
@@ -447,184 +967,284 @@ td {
 
 </head>
 
+
 <body>
 
 <div class="container">
 
+
+    <!-- HEADER -->
+
     <div class="header">
 
-        <h1>REWin Health Report</h1>
+        <div class="brand">
 
-        <p>
-            Windows IT Diagnostics & Health Assessment
-        </p>
+            <div class="logo">
+                RE
+            </div>
 
-        <p>
-            Generated: $GeneratedAt
-        </p>
+            <div>
+
+                <h1>$Title</h1>
+
+                <p>$Subtitle</p>
+
+            </div>
+
+        </div>
+
+        <div class="generated">
+
+            ${GeneratedText}: $GeneratedAt
+
+        </div>
 
     </div>
 
 
-    <!-- HEALTH SUMMARY -->
+    <!-- SUMMARY -->
 
-    <div class="card health-card">
+    <div class="summary">
 
-        <div>
+
+        <div class="score-box">
 
             <div class="score-circle">
 
-                <span class="score-number $StatusClass">
+                <span class="score-number $OverallClass">
                     $OverallScore
                 </span>
 
             </div>
 
-            <div class="score-label">
+            <div class="score-total">
                 / 100
             </div>
 
         </div>
 
-        <div>
 
-            <h2 class="$StatusClass">
+        <div class="summary-content">
+
+            <h2 class="$OverallClass">
                 $OverallStatus
             </h2>
 
-            <p>
+            <div class="summary-text">
                 $Summary
-            </p>
-
-            <div class="attention $AttentionClass">
-                $AttentionText
             </div>
 
-            <p>
-                <strong>Issues:</strong>
-                $($Report.IssueCount)
-                &nbsp;&nbsp;
+            <span class="attention $AttentionClass">
+                $AttentionText
+            </span>
 
-                <strong>Critical:</strong>
-                $($Report.CriticalCount)
-                &nbsp;&nbsp;
 
-                <strong>Warnings:</strong>
-                $($Report.WarningCount)
-            </p>
+            <div class="counters">
+
+
+                <div class="counter">
+
+                    <strong>
+                        $($Report.IssueCount)
+                    </strong>
+
+                    <span>
+                        $IssueText
+                    </span>
+
+                </div>
+
+
+                <div class="counter">
+
+                    <strong class="critical">
+                        $($Report.CriticalCount)
+                    </strong>
+
+                    <span>
+                        $CriticalText
+                    </span>
+
+                </div>
+
+
+                <div class="counter">
+
+                    <strong class="warning">
+                        $($Report.WarningCount)
+                    </strong>
+
+                    <span>
+                        $WarningText
+                    </span>
+
+                </div>
+
+
+            </div>
 
         </div>
 
     </div>
 
 
-    <!-- MODULE SCORES -->
+    <!-- MODULE HEALTH -->
 
-    <div class="card">
+    <div class="section">
 
-        <h2>Module Health</h2>
+        <h2>
+            $ModuleHealthText
+        </h2>
 
-        <table>
+        <div class="module-grid">
 
-            <thead>
-                <tr>
-                    <th>Module</th>
-                    <th>Health Score</th>
-                </tr>
-            </thead>
+            $ModuleCards
 
-            <tbody>
-
-                $ModuleRows
-
-            </tbody>
-
-        </table>
+        </div>
 
     </div>
 
 
-    <!-- RECOMMENDATIONS -->
+    <!-- ISSUES -->
 
-    <div class="card">
+    <div class="section">
 
-        <h2>Recommendations</h2>
+        <h2>
+            $IssuesText
+        </h2>
 
-        <table>
-
-            <thead>
-
-                <tr>
-                    <th>Severity</th>
-                    <th>Area</th>
-                    <th>Message</th>
-                </tr>
-
-            </thead>
-
-            <tbody>
-
-                $RecommendationRows
-
-            </tbody>
-
-        </table>
+        $RecommendationRows
 
     </div>
 
 
     <!-- SYSTEM INFORMATION -->
 
-    <div class="card">
+    <div class="section">
 
-        <h2>System Information</h2>
+        <h2>
+            $SystemInfoText
+        </h2>
 
         <div class="info-grid">
 
-            <div class="info-item">
-                <div class="info-label">Computer</div>
-                <div class="info-value">$ComputerName</div>
-            </div>
 
             <div class="info-item">
-                <div class="info-label">Manufacturer</div>
-                <div class="info-value">$Manufacturer</div>
+
+                <div class="info-label">
+                    $ComputerText
+                </div>
+
+                <div class="info-value">
+                    $ComputerName
+                </div>
+
             </div>
 
-            <div class="info-item">
-                <div class="info-label">Model</div>
-                <div class="info-value">$Model</div>
-            </div>
 
             <div class="info-item">
-                <div class="info-label">Operating System</div>
-                <div class="info-value">$OperatingSystem</div>
+
+                <div class="info-label">
+                    $ManufacturerText
+                </div>
+
+                <div class="info-value">
+                    $Manufacturer
+                </div>
+
             </div>
 
-            <div class="info-item">
-                <div class="info-label">Build</div>
-                <div class="info-value">$Build</div>
-            </div>
 
             <div class="info-item">
-                <div class="info-label">CPU</div>
-                <div class="info-value">$CPU</div>
+
+                <div class="info-label">
+                    $ModelText
+                </div>
+
+                <div class="info-value">
+                    $Model
+                </div>
+
             </div>
 
-            <div class="info-item">
-                <div class="info-label">Memory</div>
-                <div class="info-value">$RAM</div>
-            </div>
 
             <div class="info-item">
-                <div class="info-label">Architecture</div>
-                <div class="info-value">$Architecture</div>
+
+                <div class="info-label">
+                    $OSText
+                </div>
+
+                <div class="info-value">
+                    $OperatingSystem
+                </div>
+
             </div>
 
+
             <div class="info-item">
-                <div class="info-label">Uptime</div>
-                <div class="info-value">$Uptime</div>
+
+                <div class="info-label">
+                    $BuildText
+                </div>
+
+                <div class="info-value">
+                    $Build
+                </div>
+
             </div>
+
+
+            <div class="info-item">
+
+                <div class="info-label">
+                    $CPUText
+                </div>
+
+                <div class="info-value">
+                    $CPU
+                </div>
+
+            </div>
+
+
+            <div class="info-item">
+
+                <div class="info-label">
+                    $MemoryText
+                </div>
+
+                <div class="info-value">
+                    $RAM
+                </div>
+
+            </div>
+
+
+            <div class="info-item">
+
+                <div class="info-label">
+                    $ArchitectureText
+                </div>
+
+                <div class="info-value">
+                    $Architecture
+                </div>
+
+            </div>
+
+
+            <div class="info-item">
+
+                <div class="info-label">
+                    $UptimeText
+                </div>
+
+                <div class="info-value">
+                    $Uptime
+                </div>
+
+            </div>
+
 
         </div>
 
@@ -632,18 +1252,22 @@ td {
 
 
     <div class="footer">
-        Generated by REWin
+
+        REWin - Windows IT Diagnostics
+
     </div>
+
 
 </div>
 
 </body>
+
 </html>
 "@
 
 
     # ============================================================
-    # WRITE FILE
+    # CREATE DIRECTORY
     # ============================================================
 
     $Directory = Split-Path -Parent $Path
@@ -657,13 +1281,24 @@ td {
             Out-Null
     }
 
+
+    # ============================================================
+    # WRITE HTML
+    # ============================================================
+
     Set-Content `
         -Path $Path `
         -Value $Html `
         -Encoding UTF8
 
+
+    # ============================================================
+    # RETURN PATH
+    # ============================================================
+
     return $Path
 }
+
 
 Export-ModuleMember -Function `
     Export-REWinHealthReport
