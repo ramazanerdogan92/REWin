@@ -10,29 +10,29 @@ function Get-REWinNetworkDiagnostics {
 
         $Adapters = @(
             Get-NetAdapter -ErrorAction Stop |
-            Where-Object {
-                $_.Status -eq "Up"
-            } |
-            ForEach-Object {
+                Where-Object {
+                    $_.Status -eq "Up"
+                } |
+                ForEach-Object {
 
-                $Type = "Physical"
+                    $Type = "Physical"
 
-                if (
-                    $_.Name -match `
-                    "VPN|Virtual|TAP|TUN|PANGP|Hyper-V|VMware|VirtualBox|WireGuard"
-                ) {
-                    $Type = "Virtual / VPN"
+                    if (
+                        $_.Name -match `
+                        "VPN|Virtual|TAP|TUN|PANGP|Hyper-V|VMware|VirtualBox|WireGuard"
+                    ) {
+                        $Type = "Virtual / VPN"
+                    }
+
+                    [PSCustomObject]@{
+                        Name        = $_.Name
+                        Description = $_.InterfaceDescription
+                        Status      = $_.Status
+                        LinkSpeed   = $_.LinkSpeed
+                        MacAddress  = $_.MacAddress
+                        Type        = $Type
+                    }
                 }
-
-                [PSCustomObject]@{
-                    Name        = $_.Name
-                    Description = $_.InterfaceDescription
-                    Status      = $_.Status
-                    LinkSpeed   = $_.LinkSpeed
-                    MacAddress  = $_.MacAddress
-                    Type        = $Type
-                }
-            }
         )
     }
     catch {
@@ -50,46 +50,46 @@ function Get-REWinNetworkDiagnostics {
 
         $Configurations = @(
             Get-NetIPConfiguration -ErrorAction Stop |
-            Where-Object {
-                $_.NetAdapter.Status -eq "Up"
-            } |
-            ForEach-Object {
+                Where-Object {
+                    $_.NetAdapter.Status -eq "Up"
+                } |
+                ForEach-Object {
 
-                $IPv4 = @(
-                    $_.IPv4Address |
-                    ForEach-Object {
-                        $_.IPAddress
-                    }
-                )
+                    $IPv4 = @(
+                        $_.IPv4Address |
+                            ForEach-Object {
+                                $_.IPAddress
+                            }
+                    )
 
-                $IPv6 = @(
-                    $_.IPv6Address |
-                    ForEach-Object {
-                        $_.IPAddress
-                    }
-                )
+                    $IPv6 = @(
+                        $_.IPv6Address |
+                            ForEach-Object {
+                                $_.IPAddress
+                            }
+                    )
 
-                $Gateway = $_.IPv4DefaultGateway.NextHop
+                    $Gateway = $_.IPv4DefaultGateway.NextHop
 
-                $DNS = Get-DnsClientServerAddress `
-                    -InterfaceIndex $_.InterfaceIndex `
-                    -AddressFamily IPv4 `
-                    -ErrorAction SilentlyContinue
+                    $DNS = Get-DnsClientServerAddress `
+                        -InterfaceIndex $_.InterfaceIndex `
+                        -AddressFamily IPv4 `
+                        -ErrorAction SilentlyContinue
 
-                [PSCustomObject]@{
-                    Interface = $_.InterfaceAlias
-                    InterfaceIndex = $_.InterfaceIndex
-                    IPv4 = $IPv4 -join ", "
-                    IPv6 = $IPv6 -join ", "
-                    Gateway = $Gateway
-                    DNSServers = if ($DNS.ServerAddresses) {
-                        $DNS.ServerAddresses -join ", "
-                    }
-                    else {
-                        "N/A"
+                    [PSCustomObject]@{
+                        Interface = $_.InterfaceAlias
+                        InterfaceIndex = $_.InterfaceIndex
+                        IPv4 = $IPv4 -join ", "
+                        IPv6 = $IPv6 -join ", "
+                        Gateway = $Gateway
+                        DNSServers = if ($DNS.ServerAddresses) {
+                            $DNS.ServerAddresses -join ", "
+                        }
+                        else {
+                            "N/A"
+                        }
                     }
                 }
-            }
         )
     }
     catch {
@@ -128,6 +128,7 @@ function Get-REWinNetworkDiagnostics {
     # ------------------------------------------------------------
 
     $GatewayStatus = "FAIL"
+
     $GatewayLatency = $null
 
     if ($Gateway) {
@@ -161,6 +162,7 @@ function Get-REWinNetworkDiagnostics {
     # ------------------------------------------------------------
 
     $InternetStatus = "FAIL"
+
     $InternetLatency = $null
 
     try {
@@ -191,6 +193,7 @@ function Get-REWinNetworkDiagnostics {
     # ------------------------------------------------------------
 
     $DNSStatus = "FAIL"
+
     $DNSResolvedIP = $null
 
     try {
@@ -242,10 +245,12 @@ function Get-REWinNetworkDiagnostics {
                     -ErrorAction Stop
 
                 if ($Ping) {
+
                     $ServerStatus = "OK"
                 }
             }
             catch {
+
                 $ServerStatus = "FAIL"
             }
 
@@ -264,6 +269,7 @@ function Get-REWinNetworkDiagnostics {
     # ------------------------------------------------------------
 
     $DHCPEnabled = $null
+
     $DHCPServer = $null
 
     try {
@@ -281,11 +287,11 @@ function Get-REWinNetworkDiagnostics {
 
             $DHCPServer = (
                 Get-CimInstance Win32_NetworkAdapterConfiguration |
-                Where-Object {
-                    $_.IPEnabled -and
-                    $_.DHCPEnabled
-                } |
-                Select-Object -First 1
+                    Where-Object {
+                        $_.IPEnabled -and
+                        $_.DHCPEnabled
+                    } |
+                    Select-Object -First 1
             ).DHCPServer
         }
     }
@@ -314,6 +320,7 @@ function Get-REWinNetworkDiagnostics {
                 Select-Object -First 1
 
             if ($ProxyLine) {
+
                 $WinHTTPProxy = $ProxyLine.Trim()
             }
         }
@@ -334,7 +341,7 @@ function Get-REWinNetworkDiagnostics {
 
         $FirewallProfiles = @(
             Get-NetFirewallProfile -ErrorAction Stop |
-            Select-Object Name, Enabled
+                Select-Object Name, Enabled
         )
     }
     catch {
@@ -347,23 +354,49 @@ function Get-REWinNetworkDiagnostics {
     # TCP 443 TEST
     # ------------------------------------------------------------
 
+    # IMPORTANT:
+    # Do not use Test-NetConnection here.
+    # It can wait for a long time when the remote endpoint
+    # does not respond.
+    #
+    # TcpClient is used with a 3-second timeout instead.
+
     $TCP443Status = "FAIL"
 
     try {
 
-        $TCPTest = Test-NetConnection `
-            -ComputerName "www.microsoft.com" `
-            -Port 443 `
-            -WarningAction SilentlyContinue `
-            -ErrorAction SilentlyContinue
+        $TcpClient = New-Object System.Net.Sockets.TcpClient
 
-        if ($TCPTest.TcpTestSucceeded) {
+        $ConnectResult = $TcpClient.BeginConnect(
+            "www.microsoft.com",
+            443,
+            $null,
+            $null
+        )
+
+        $Connected = $ConnectResult.AsyncWaitHandle.WaitOne(3000)
+
+        if ($Connected -and $TcpClient.Connected) {
+
             $TCP443Status = "OK"
         }
+
+        $ConnectResult.AsyncWaitHandle.Close()
+
+        $TcpClient.Close()
     }
     catch {
 
         $TCP443Status = "FAIL"
+
+        if ($TcpClient) {
+
+            try {
+                $TcpClient.Close()
+            }
+            catch {
+            }
+        }
     }
 
 
@@ -373,9 +406,9 @@ function Get-REWinNetworkDiagnostics {
 
     $VirtualAdapters = @(
         $Adapters |
-        Where-Object {
-            $_.Type -eq "Virtual / VPN"
-        }
+            Where-Object {
+                $_.Type -eq "Virtual / VPN"
+            }
     )
 
 
@@ -386,27 +419,22 @@ function Get-REWinNetworkDiagnostics {
     if (-not $Primary) {
 
         $Status = "CRITICAL"
-
     }
     elseif ($GatewayStatus -eq "FAIL") {
 
         $Status = "CRITICAL"
-
     }
     elseif ($InternetStatus -eq "FAIL") {
 
         $Status = "WARNING"
-
     }
     elseif ($DNSStatus -eq "FAIL") {
 
         $Status = "WARNING"
-
     }
     elseif ($TCP443Status -eq "FAIL") {
 
         $Status = "WARNING"
-
     }
     else {
 
@@ -458,20 +486,29 @@ function Get-REWinNetworkDiagnostics {
     }
 
     if ($HealthScore -lt 0) {
+
         $HealthScore = 0
     }
 
 
+    # ------------------------------------------------------------
+    # HEALTH STATUS
+    # ------------------------------------------------------------
+
     if ($HealthScore -ge 90) {
+
         $HealthStatus = "EXCELLENT"
     }
     elseif ($HealthScore -ge 75) {
+
         $HealthStatus = "GOOD"
     }
     elseif ($HealthScore -ge 50) {
+
         $HealthStatus = "WARNING"
     }
     else {
+
         $HealthStatus = "CRITICAL"
     }
 
@@ -532,4 +569,6 @@ function Get-REWinNetworkDiagnostics {
     }
 }
 
-Export-ModuleMember -Function Get-REWinNetworkDiagnostics
+
+Export-ModuleMember -Function `
+    Get-REWinNetworkDiagnostics
