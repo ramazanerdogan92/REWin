@@ -4,7 +4,6 @@ function Get-REWinCrashDiagnostics {
 
     # ------------------------------------------------------------
     # BUGCHECK EVENTS
-    # Event ID 1001 = BugCheck / Windows Error Reporting
     # ------------------------------------------------------------
 
     $BugCheckEvents = @()
@@ -28,7 +27,6 @@ function Get-REWinCrashDiagnostics {
 
     # ------------------------------------------------------------
     # KERNEL-POWER EVENTS
-    # Event ID 41 = Unexpected shutdown / restart
     # ------------------------------------------------------------
 
     $KernelPowerEvents = @()
@@ -51,7 +49,7 @@ function Get-REWinCrashDiagnostics {
 
 
     # ------------------------------------------------------------
-    # MINIDUMP
+    # MINIDUMPS
     # ------------------------------------------------------------
 
     $MiniDumpPath = "$env:SystemRoot\Minidump"
@@ -94,7 +92,119 @@ function Get-REWinCrashDiagnostics {
 
 
     # ------------------------------------------------------------
-    # CRASH CONTROL CONFIGURATION
+    # LIVE KERNEL DUMP ANALYSIS
+    # ------------------------------------------------------------
+
+    $LiveDumpAnalysis = @()
+
+    foreach ($Dump in $LiveDumpFiles) {
+
+        $RelativePath = $Dump.FullName.Substring(
+            $LiveDumpPath.Length
+        ).TrimStart("\\")
+
+        $Parts = $RelativePath.Split("\")
+
+        $Category = if ($Parts.Count -gt 1) {
+            $Parts[0]
+        }
+        else {
+            "Unknown"
+        }
+
+        switch -Regex ($Category) {
+
+            "WATCHDOG" {
+
+                $LikelyCause = "Driver / GPU / Hardware Watchdog"
+
+                $Recommendation = @(
+                    "Check graphics and chipset drivers."
+                    "Check Windows Update for driver updates."
+                    "Review recent driver changes."
+                    "If the issue repeats, analyze the dump with WinDbg."
+                ) -join " "
+
+                break
+            }
+
+            "GPU|GRAPHICS|DISPLAY" {
+
+                $LikelyCause = "Graphics Driver / GPU"
+
+                $Recommendation = @(
+                    "Check GPU driver version."
+                    "Consider clean driver installation."
+                    "Check GPU temperature and hardware health."
+                    "Analyze the dump if the issue repeats."
+                ) -join " "
+
+                break
+            }
+
+            "USB" {
+
+                $LikelyCause = "USB Driver / USB Device"
+
+                $Recommendation = @(
+                    "Check connected USB devices."
+                    "Update chipset and USB drivers."
+                    "Test after disconnecting non-essential USB devices."
+                ) -join " "
+
+                break
+            }
+
+            "PDC" {
+
+                $LikelyCause = "Power Management / Driver"
+
+                $Recommendation = @(
+                    "Check power management settings."
+                    "Update chipset and device drivers."
+                    "Review sleep and hibernation related events."
+                ) -join " "
+
+                break
+            }
+
+            default {
+
+                $LikelyCause = "Unknown Live Kernel Dump"
+
+                $Recommendation = @(
+                    "Review the dump category and timestamp."
+                    "Check System Event Log around the same time."
+                    "Analyze the dump with WinDbg if the problem repeats."
+                ) -join " "
+            }
+        }
+
+
+        $LiveDumpAnalysis += [PSCustomObject]@{
+
+            FileName = $Dump.Name
+
+            Category = $Category
+
+            Path = $Dump.FullName
+
+            SizeMB = [math]::Round(
+                $Dump.Length / 1MB,
+                2
+            )
+
+            Modified = $Dump.LastWriteTime
+
+            LikelyCause = $LikelyCause
+
+            Recommendation = $Recommendation
+        }
+    }
+
+
+    # ------------------------------------------------------------
+    # CRASH CONTROL
     # ------------------------------------------------------------
 
     $CrashControl = Get-ItemProperty `
@@ -126,13 +236,10 @@ function Get-REWinCrashDiagnostics {
 
 
     # ------------------------------------------------------------
-    # BUGCHECK CODE ANALYSIS
+    # BUGCHECK ANALYSIS
     # ------------------------------------------------------------
 
     $LatestBugCheck = $null
-    $BugCheckCode = $null
-    $BugCheckName = "Unknown"
-    $LikelyCause = "Unknown"
 
     if ($BugCheckEvents.Count -gt 0) {
 
@@ -140,103 +247,68 @@ function Get-REWinCrashDiagnostics {
 
         $Message = $LatestEvent.Message
 
-        # Find hexadecimal BugCheck code
         $Match = [regex]::Match(
             $Message,
             '0x[0-9A-Fa-f]{1,8}'
         )
 
-        if ($Match.Success) {
-
-            $BugCheckCode = $Match.Value.ToUpper()
-
-            $BugCheckName = switch ($BugCheckCode) {
-
-                "0x0000000A" {
-                    "IRQL_NOT_LESS_OR_EQUAL"
-                }
-
-                "0x0000001E" {
-                    "KMODE_EXCEPTION_NOT_HANDLED"
-                }
-
-                "0x0000003B" {
-                    "SYSTEM_SERVICE_EXCEPTION"
-                }
-
-                "0x00000050" {
-                    "PAGE_FAULT_IN_NONPAGED_AREA"
-                }
-
-                "0x0000007E" {
-                    "SYSTEM_THREAD_EXCEPTION_NOT_HANDLED"
-                }
-
-                "0x0000009F" {
-                    "DRIVER_POWER_STATE_FAILURE"
-                }
-
-                "0x00000116" {
-                    "VIDEO_TDR_FAILURE"
-                }
-
-                "0x00000133" {
-                    "DPC_WATCHDOG_VIOLATION"
-                }
-
-                "0x00000139" {
-                    "KERNEL_SECURITY_CHECK_FAILURE"
-                }
-
-                "0x00000124" {
-                    "WHEA_UNCORRECTABLE_ERROR"
-                }
-
-                "0x00000154" {
-                    "UNEXPECTED_STORE_EXCEPTION"
-                }
-
-                default {
-                    "Unknown BugCheck"
-                }
-            }
-
-            $LikelyCause = switch ($BugCheckCode) {
-
-                "0x0000009F" {
-                    "Driver / Power Management"
-                }
-
-                "0x00000116" {
-                    "Graphics Driver / GPU"
-                }
-
-                "0x00000124" {
-                    "Hardware / CPU / RAM / PCIe"
-                }
-
-                "0x00000133" {
-                    "Driver / Kernel / Hardware"
-                }
-
-                "0x00000050" {
-                    "Driver / Memory"
-                }
-
-                "0x0000000A" {
-                    "Driver / Kernel Memory"
-                }
-
-                "0x0000003B" {
-                    "Driver / System Service"
-                }
-
-                default {
-                    "Requires dump analysis"
-                }
-            }
+        $BugCheckCode = if ($Match.Success) {
+            $Match.Value.ToUpper()
+        }
+        else {
+            "Unknown"
         }
 
+        $BugCheckName = switch ($BugCheckCode) {
+
+            "0x0000000A" {
+                "IRQL_NOT_LESS_OR_EQUAL"
+            }
+
+            "0x0000001E" {
+                "KMODE_EXCEPTION_NOT_HANDLED"
+            }
+
+            "0x0000003B" {
+                "SYSTEM_SERVICE_EXCEPTION"
+            }
+
+            "0x00000050" {
+                "PAGE_FAULT_IN_NONPAGED_AREA"
+            }
+
+            "0x0000007E" {
+                "SYSTEM_THREAD_EXCEPTION_NOT_HANDLED"
+            }
+
+            "0x0000009F" {
+                "DRIVER_POWER_STATE_FAILURE"
+            }
+
+            "0x00000116" {
+                "VIDEO_TDR_FAILURE"
+            }
+
+            "0x00000133" {
+                "DPC_WATCHDOG_VIOLATION"
+            }
+
+            "0x00000139" {
+                "KERNEL_SECURITY_CHECK_FAILURE"
+            }
+
+            "0x00000124" {
+                "WHEA_UNCORRECTABLE_ERROR"
+            }
+
+            "0x00000154" {
+                "UNEXPECTED_STORE_EXCEPTION"
+            }
+
+            default {
+                "Unknown BugCheck"
+            }
+        }
 
         $LatestBugCheck = [PSCustomObject]@{
 
@@ -247,8 +319,6 @@ function Get-REWinCrashDiagnostics {
             BugCheckCode = $BugCheckCode
 
             BugCheckName = $BugCheckName
-
-            LikelyCause = $LikelyCause
 
             Provider = $LatestEvent.ProviderName
 
@@ -284,36 +354,7 @@ function Get-REWinCrashDiagnostics {
                 2
             )
 
-            Created = $LatestDump.CreationTime
-
             Modified = $LatestDump.LastWriteTime
-        }
-    }
-
-
-    # ------------------------------------------------------------
-    # LATEST LIVE KERNEL DUMP
-    # ------------------------------------------------------------
-
-    $LatestLiveDump = $LiveDumpFiles |
-        Select-Object -First 1
-
-    $LatestLiveDumpInfo = $null
-
-    if ($LatestLiveDump) {
-
-        $LatestLiveDumpInfo = [PSCustomObject]@{
-
-            FileName = $LatestLiveDump.Name
-
-            Path = $LatestLiveDump.FullName
-
-            SizeMB = [math]::Round(
-                $LatestLiveDump.Length / 1MB,
-                2
-            )
-
-            Modified = $LatestLiveDump.LastWriteTime
         }
     }
 
@@ -332,12 +373,12 @@ function Get-REWinCrashDiagnostics {
         $Status = "WARNING"
 
     }
-    elseif ($DumpFiles.Count -gt 0) {
+    elseif ($LiveDumpFiles.Count -gt 0) {
 
         $Status = "WARNING"
 
     }
-    elseif ($LiveDumpFiles.Count -gt 0) {
+    elseif ($DumpFiles.Count -gt 0) {
 
         $Status = "WARNING"
 
@@ -386,7 +427,7 @@ function Get-REWinCrashDiagnostics {
 
         LatestMinidump = $LatestDumpInfo
 
-        LatestLiveKernelDump = $LatestLiveDumpInfo
+        LiveKernelDumps = $LiveDumpAnalysis
     }
 }
 
