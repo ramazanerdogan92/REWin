@@ -4,7 +4,7 @@ function Get-REWinHealthReport {
     # LOAD MODULES
     # ============================================================
 
-    $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $Root = Split-Path -Parent $PSScriptRoot
 
     $Modules = @(
         @{
@@ -41,7 +41,6 @@ function Get-REWinHealthReport {
         }
     )
 
-
     # ============================================================
     # IMPORT MODULES
     # ============================================================
@@ -53,7 +52,6 @@ function Get-REWinHealthReport {
         }
     }
 
-
     # ============================================================
     # RUN DIAGNOSTICS
     # ============================================================
@@ -63,7 +61,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $System = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -73,7 +71,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $Disk = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -83,7 +81,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $Network = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -93,7 +91,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $WindowsUpdate = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -103,7 +101,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $EventLog = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -113,7 +111,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $Crash = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -123,7 +121,7 @@ function Get-REWinHealthReport {
     }
     catch {
         $Hardware = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
@@ -133,11 +131,10 @@ function Get-REWinHealthReport {
     }
     catch {
         $Security = [PSCustomObject]@{
-            Status = "ERROR"
+            Status      = "ERROR"
             HealthScore = 0
         }
     }
-
 
     # ============================================================
     # HEALTH ENGINE
@@ -160,165 +157,120 @@ function Get-REWinHealthReport {
         -Hardware $Hardware `
         -Security $Security
 
-
     # ============================================================
-    # RECOMMENDATIONS
-    # ============================================================
-
-    $Recommendations = @()
-
-
-    # ------------------------------------------------------------
-    # Windows Update
-    # ------------------------------------------------------------
-
-    if ($WindowsUpdate.PendingReboot) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "WARNING"
-            Area = "Windows Update"
-            Message = "A system restart is pending."
-        }
-    }
-
-
-    # ------------------------------------------------------------
-    # Event Log
-    # ------------------------------------------------------------
-
-    if ($EventLog.ErrorCount -gt 0) {
-
-        $Severity = if ($EventLog.ErrorCount -ge 50) {
-            "CRITICAL"
-        }
-        else {
-            "WARNING"
-        }
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = $Severity
-            Area = "Event Log"
-            Message = "$($EventLog.ErrorCount) error event(s) detected in the scan period."
-        }
-    }
-
-
-    # ------------------------------------------------------------
-    # Crash
-    # ------------------------------------------------------------
-
-    if ($Crash.BugCheckCount -gt 0) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "CRITICAL"
-            Area = "Crash"
-            Message = "$($Crash.BugCheckCount) BugCheck event(s) detected."
-        }
-    }
-
-    if ($Crash.LiveKernelDumpCount -gt 0) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "WARNING"
-            Area = "Crash"
-            Message = "$($Crash.LiveKernelDumpCount) Live Kernel dump(s) detected."
-        }
-    }
-
-
-    # ------------------------------------------------------------
-    # Security
-    # ------------------------------------------------------------
-
-    if ($Security.RealTimeProtection -eq "WARNING") {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "CRITICAL"
-            Area = "Security"
-            Message = "Windows Defender real-time protection is disabled."
-        }
-    }
-
-    if ($Security.SecureBootEnabled -eq $false) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "WARNING"
-            Area = "Security"
-            Message = "Secure Boot is disabled."
-        }
-    }
-
-    if ($Security.BitLockerProblemCount -gt 0) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "WARNING"
-            Area = "Security"
-            Message = "BitLocker protection requires attention."
-        }
-    }
-
-
-    # ------------------------------------------------------------
-    # Network
-    # ------------------------------------------------------------
-
-    if ($Network.HealthScore -lt 50) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "CRITICAL"
-            Area = "Network"
-            Message = "Network health is critically low."
-        }
-    }
-    elseif ($Network.HealthScore -lt 90) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "WARNING"
-            Area = "Network"
-            Message = "Network health requires attention."
-        }
-    }
-
-
-    # ------------------------------------------------------------
-    # Hardware
-    # ------------------------------------------------------------
-
-    if ($Hardware.HealthScore -lt 50) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "CRITICAL"
-            Area = "Hardware"
-            Message = "Hardware health is critically low."
-        }
-    }
-    elseif ($Hardware.HealthScore -lt 90) {
-
-        $Recommendations += [PSCustomObject]@{
-            Severity = "WARNING"
-            Area = "Hardware"
-            Message = "Hardware health requires attention."
-        }
-    }
-
-
-    # ============================================================
-    # SORT RECOMMENDATIONS
+    # RECOMMENDATION ENGINE
     # ============================================================
 
-    $SeverityOrder = @{
-        "CRITICAL" = 1
-        "WARNING"  = 2
-        "INFO"     = 3
+    $RecommendationEnginePath = Join-Path `
+        $PSScriptRoot `
+        "RecommendationEngine.psm1"
+
+    Import-Module `
+        $RecommendationEnginePath `
+        -Force `
+        -ErrorAction SilentlyContinue
+
+    $RecommendationInput = [PSCustomObject]@{
+        ModuleResults = @(
+            [PSCustomObject]@{
+                Module = "System"
+                Status = $System.Status
+                HealthScore = if ($null -ne $System.HealthScore) {
+                    $System.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "Disk"
+                Status = if ($Disk.Count -gt 0) {
+                    ($Disk | Select-Object -First 1).Status
+                }
+                else {
+                    "ERROR"
+                }
+                HealthScore = if ($Disk.Count -gt 0 -and $null -ne $Disk[0].HealthScore) {
+                    $Disk[0].HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "Network"
+                Status = $Network.Status
+                HealthScore = if ($null -ne $Network.HealthScore) {
+                    $Network.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "WindowsUpdate"
+                Status = $WindowsUpdate.Status
+                HealthScore = if ($null -ne $WindowsUpdate.HealthScore) {
+                    $WindowsUpdate.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "EventLog"
+                Status = $EventLog.Status
+                HealthScore = if ($null -ne $EventLog.HealthScore) {
+                    $EventLog.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "Crash"
+                Status = $Crash.Status
+                HealthScore = if ($null -ne $Crash.HealthScore) {
+                    $Crash.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "Hardware"
+                Status = $Hardware.Status
+                HealthScore = if ($null -ne $Hardware.HealthScore) {
+                    $Hardware.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+
+            [PSCustomObject]@{
+                Module = "Security"
+                Status = $Security.Status
+                HealthScore = if ($null -ne $Security.HealthScore) {
+                    $Security.HealthScore
+                }
+                else {
+                    0
+                }
+            }
+        )
     }
 
     $Recommendations = @(
-        $Recommendations |
-            Sort-Object {
-                $SeverityOrder[$_.Severity]
-            }
+        Get-REWinRecommendation `
+            -HealthReport $RecommendationInput
     )
-
 
     # ============================================================
     # ISSUE COUNTS
@@ -327,21 +279,21 @@ function Get-REWinHealthReport {
     $CriticalCount = @(
         $Recommendations |
             Where-Object {
-                $_.Severity -eq "CRITICAL"
+                $_.Priority -eq "HIGH" -and
+                $_.Status -eq "CRITICAL"
             }
     ).Count
 
     $WarningCount = @(
         $Recommendations |
             Where-Object {
-                $_.Severity -eq "WARNING"
+                $_.Status -eq "WARNING"
             }
     ).Count
 
     $IssueCount = $CriticalCount + $WarningCount
 
     $AttentionRequired = ($IssueCount -gt 0)
-
 
     # ============================================================
     # ATTENTION STATUS
@@ -357,6 +309,12 @@ function Get-REWinHealthReport {
         $AttentionStatus = "NONE"
     }
 
+    # ============================================================
+    # RECOMMENDATION SUMMARY
+    # ============================================================
+
+    $RecommendationSummary = Get-REWinRecommendationSummary `
+        -Recommendations $Recommendations
 
     # ============================================================
     # RESULT
@@ -376,6 +334,8 @@ function Get-REWinHealthReport {
         IssueCount    = $IssueCount
         CriticalCount = $CriticalCount
         WarningCount  = $WarningCount
+
+        RecommendationSummary = $RecommendationSummary
 
         ModuleScores = $Health.ModuleScores
         WeakAreas    = $Health.WeakAreas
