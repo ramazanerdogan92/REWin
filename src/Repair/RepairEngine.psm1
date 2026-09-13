@@ -14,6 +14,7 @@ $Script:REWinHealthReportPath = Join-Path `
     $Script:REWinModuleRoot `
     "Core\HealthReport.psm1"
 
+
 # ============================================================
 # INTERNAL HELPERS
 # ============================================================
@@ -25,14 +26,12 @@ function Ensure-REWinRepairDirectories {
         New-Item -ItemType Directory `
             -Path $Script:REWinRepairRoot `
             -Force `
-            -ErrorAction SilentlyContinue |
-            Out-Null
+            -ErrorAction SilentlyContinue | Out-Null
 
         New-Item -ItemType Directory `
             -Path $Script:REWinRepairBackupRoot `
             -Force `
-            -ErrorAction SilentlyContinue |
-            Out-Null
+            -ErrorAction SilentlyContinue | Out-Null
 
         return $true
     }
@@ -42,9 +41,6 @@ function Ensure-REWinRepairDirectories {
     }
 }
 
-# ============================================================
-# LOGGING
-# ============================================================
 
 function Write-REWinRepairLog {
 
@@ -62,8 +58,7 @@ function Write-REWinRepairLog {
         New-Item -ItemType Directory `
             -Path $logDir `
             -Force `
-            -ErrorAction SilentlyContinue |
-            Out-Null
+            -ErrorAction SilentlyContinue | Out-Null
 
         $logFile = Join-Path `
             $logDir `
@@ -83,9 +78,6 @@ function Write-REWinRepairLog {
     }
 }
 
-# ============================================================
-# SAFE FOLDER NAME
-# ============================================================
 
 function Convert-REWinRepairNameToFolderName {
 
@@ -100,9 +92,6 @@ function Convert-REWinRepairNameToFolderName {
     return $safeName
 }
 
-# ============================================================
-# SYSTEM RESTORE STATUS
-# ============================================================
 
 function Get-REWinSystemRestoreStatus {
 
@@ -145,25 +134,29 @@ function Get-REWinSystemRestoreStatus {
 
     if ($restorePointExists) {
 
-        return [PSCustomObject]@{
+        [PSCustomObject]@{
             Status       = "AVAILABLE"
             Reason       = "Existing restore points were found."
             Service      = $serviceStatus
             RestorePoint = $true
         }
+
+        return
     }
 
     if ($serviceStatus -eq "Running") {
 
-        return [PSCustomObject]@{
+        [PSCustomObject]@{
             Status       = "NOT_AVAILABLE"
             Reason       = "No existing restore points were found."
             Service      = $serviceStatus
             RestorePoint = $false
         }
+
+        return
     }
 
-    return [PSCustomObject]@{
+    [PSCustomObject]@{
         Status       = "NOT_AVAILABLE"
         Reason       = "System Restore service is not running or no restore points were found."
         Service      = $serviceStatus
@@ -171,20 +164,13 @@ function Get-REWinSystemRestoreStatus {
     }
 }
 
-# ============================================================
-# HEALTH SNAPSHOT
-# ============================================================
 
 function Get-REWinHealthSnapshot {
-
-    Write-REWinRepairLog "HEALTH SNAPSHOT START"
 
     try {
 
         if (-not (Test-Path $Script:REWinHealthReportPath)) {
 
-            Write-REWinRepairLog "HEALTH REPORT MODULE NOT FOUND"
-
             return [PSCustomObject]@{
                 Available = $false
                 Score     = $null
@@ -193,39 +179,14 @@ function Get-REWinHealthSnapshot {
             }
         }
 
-        # ----------------------------------------------------
-        # Only load HealthReport if the command is not already
-        # available in the current session.
-        # ----------------------------------------------------
-
-        $healthCommand = Get-Command `
-            Get-REWinHealthReport `
-            -ErrorAction SilentlyContinue
-
-        if ($null -eq $healthCommand) {
-
-            Write-REWinRepairLog `
-                "HealthReport command not loaded. Loading module."
-
-            Import-Module `
-                $Script:REWinHealthReportPath `
-                -ErrorAction Stop
-        }
-        else {
-
-            Write-REWinRepairLog `
-                "HealthReport command already loaded. Reuse current module."
-        }
-
-        Write-REWinRepairLog "HEALTH REPORT EXECUTION START"
+        Import-Module `
+            $Script:REWinHealthReportPath `
+            -Force `
+            -ErrorAction Stop
 
         $report = Get-REWinHealthReport
 
-        Write-REWinRepairLog "HEALTH REPORT EXECUTION COMPLETE"
-
         if ($null -eq $report) {
-
-            Write-REWinRepairLog "HEALTH REPORT RETURNED NULL"
 
             return [PSCustomObject]@{
                 Available = $false
@@ -235,23 +196,17 @@ function Get-REWinHealthSnapshot {
             }
         }
 
-        $score = [int]$report.OverallScore
-        $status = [string]$report.OverallStatus
-
-        Write-REWinRepairLog `
-            ("HEALTH SNAPSHOT RESULT: {0} / {1}" -f $score,$status)
-
         return [PSCustomObject]@{
             Available = $true
-            Score     = $score
-            Status    = $status
+            Score     = [int]$report.OverallScore
+            Status    = [string]$report.OverallStatus
             Report    = $report
         }
     }
     catch {
 
         Write-REWinRepairLog `
-            ("HEALTH SNAPSHOT ERROR: {0}" -f $_.Exception.Message)
+            ("Health snapshot failed: {0}" -f $_.Exception.Message)
 
         return [PSCustomObject]@{
             Available = $false
@@ -262,9 +217,6 @@ function Get-REWinHealthSnapshot {
     }
 }
 
-# ============================================================
-# HEALTH COMPARISON
-# ============================================================
 
 function Get-REWinHealthComparison {
 
@@ -291,7 +243,8 @@ function Get-REWinHealthComparison {
         $changed = ($delta -ne 0)
     }
 
-    return [PSCustomObject]@{
+    [PSCustomObject]@{
+
         HealthBefore  = $beforeScore
         HealthAfter   = $afterScore
         HealthDelta   = $delta
@@ -299,9 +252,6 @@ function Get-REWinHealthComparison {
     }
 }
 
-# ============================================================
-# REPAIR SUMMARY
-# ============================================================
 
 function Get-REWinRepairSummary {
 
@@ -316,7 +266,8 @@ function Get-REWinRepairSummary {
         $CommandResults
     )
 
-    $firstResult = $CommandResults | Select-Object -First 1
+    $firstResult = $CommandResults |
+        Select-Object -First 1
 
     $output = ""
 
@@ -350,6 +301,7 @@ function Get-REWinRepairSummary {
         return "SFC failed."
     }
 
+
     if ($RepairId -eq 2) {
 
         if ($Success) {
@@ -359,6 +311,7 @@ function Get-REWinRepairSummary {
 
         return "DISM component store repair failed."
     }
+
 
     if ($RepairId -eq 3) {
 
@@ -370,6 +323,7 @@ function Get-REWinRepairSummary {
         return "DNS cache reset failed."
     }
 
+
     if ($RepairId -eq 4) {
 
         if ($Success) {
@@ -379,6 +333,7 @@ function Get-REWinRepairSummary {
 
         return "Network stack reset failed."
     }
+
 
     if ($RepairId -eq 5) {
 
@@ -390,8 +345,10 @@ function Get-REWinRepairSummary {
         return "Windows Update service operation failed."
     }
 
+
     return "Repair operation completed."
 }
+
 
 # ============================================================
 # REPAIR OPTIONS
@@ -399,7 +356,7 @@ function Get-REWinRepairSummary {
 
 function Get-REWinRepairOptions {
 
-    return @(
+    @(
         [PSCustomObject]@{
             Id          = 1
             Name        = "System File Repair"
@@ -442,8 +399,9 @@ function Get-REWinRepairOptions {
     )
 }
 
+
 # ============================================================
-# BACKUP INITIALIZATION
+# BACKUP
 # ============================================================
 
 function Initialize-REWinRepairBackup {
@@ -468,8 +426,7 @@ function Initialize-REWinRepairBackup {
         -ItemType Directory `
         -Path $backupPath `
         -Force `
-        -ErrorAction Stop |
-        Out-Null
+        -ErrorAction Stop | Out-Null
 
     Write-REWinRepairLog "BACKUP START: $RepairName"
     Write-REWinRepairLog "BACKUP PATH: $backupPath"
@@ -477,9 +434,6 @@ function Initialize-REWinRepairBackup {
     return $backupPath
 }
 
-# ============================================================
-# BACKUP
-# ============================================================
 
 function New-REWinRepairBackup {
 
@@ -495,6 +449,11 @@ function New-REWinRepairBackup {
         $backupPath = Initialize-REWinRepairBackup `
             -RepairName $RepairName
 
+
+        # ----------------------------------------------------
+        # Computer information
+        # ----------------------------------------------------
+
         try {
 
             Get-CimInstance Win32_ComputerSystem |
@@ -506,6 +465,11 @@ function New-REWinRepairBackup {
         catch {
         }
 
+
+        # ----------------------------------------------------
+        # IP configuration
+        # ----------------------------------------------------
+
         try {
 
             ipconfig.exe /all |
@@ -515,6 +479,11 @@ function New-REWinRepairBackup {
         }
         catch {
         }
+
+
+        # ----------------------------------------------------
+        # TCP/IP configuration
+        # ----------------------------------------------------
 
         try {
 
@@ -527,6 +496,11 @@ function New-REWinRepairBackup {
         catch {
         }
 
+
+        # ----------------------------------------------------
+        # Network interfaces
+        # ----------------------------------------------------
+
         try {
 
             Get-NetAdapter |
@@ -537,6 +511,11 @@ function New-REWinRepairBackup {
         }
         catch {
         }
+
+
+        # ----------------------------------------------------
+        # DNS configuration
+        # ----------------------------------------------------
 
         try {
 
@@ -549,6 +528,11 @@ function New-REWinRepairBackup {
         catch {
         }
 
+
+        # ----------------------------------------------------
+        # Services
+        # ----------------------------------------------------
+
         try {
 
             Get-Service |
@@ -560,6 +544,11 @@ function New-REWinRepairBackup {
         }
         catch {
         }
+
+
+        # ----------------------------------------------------
+        # Windows Update services
+        # ----------------------------------------------------
 
         try {
 
@@ -575,27 +564,36 @@ function New-REWinRepairBackup {
         catch {
         }
 
+
+        # ----------------------------------------------------
+        # Winsock registry
+        # ----------------------------------------------------
+
         try {
 
             reg.exe export `
                 "HKLM\SYSTEM\CurrentControlSet\Services\WinSock2" `
                 (Join-Path $backupPath "Winsock2.reg") `
-                /y |
-                Out-Null
+                /y | Out-Null
         }
         catch {
         }
+
 
         try {
 
             reg.exe export `
                 "HKLM\SYSTEM\CurrentControlSet\Services\WinSock" `
                 (Join-Path $backupPath "Winsock.reg") `
-                /y |
-                Out-Null
+                /y | Out-Null
         }
         catch {
         }
+
+
+        # ----------------------------------------------------
+        # Winsock catalog
+        # ----------------------------------------------------
 
         try {
 
@@ -607,6 +605,11 @@ function New-REWinRepairBackup {
         catch {
         }
 
+
+        # ----------------------------------------------------
+        # Restore Point status
+        # ----------------------------------------------------
+
         $restoreStatus = Get-REWinSystemRestoreStatus
 
         $restoreStatus |
@@ -615,24 +618,41 @@ function New-REWinRepairBackup {
                 -Path (Join-Path $backupPath "RestorePointStatus.json") `
                 -Encoding UTF8
 
+
+        # ----------------------------------------------------
+        # Metadata
+        # ----------------------------------------------------
+
         $metadata = [PSCustomObject]@{
+
             RepairName     = $RepairName
+
             CreatedAt      = Get-Date
+
             BackupPath     = $backupPath
+
             ComputerName   = $env:COMPUTERNAME
+
             UserName       = $env:USERNAME
+
             RestorePoint   = $restoreStatus.Status
+
             RestoreReason  = $restoreStatus.Reason
+
             RestoreService = $restoreStatus.Service
+
             Tool           = "REWin"
+
             RepairEngine   = "2.3"
         }
+
 
         $metadata |
             ConvertTo-Json -Depth 5 |
             Set-Content `
                 -Path (Join-Path $backupPath "BackupMetadata.json") `
                 -Encoding UTF8
+
 
         Write-REWinRepairLog `
             ("RESTORE POINT STATUS: {0}" -f $restoreStatus.Status)
@@ -643,12 +663,19 @@ function New-REWinRepairBackup {
         Write-REWinRepairLog `
             ("BACKUP COMPLETE: {0}" -f $backupPath)
 
-        return [PSCustomObject]@{
+
+        [PSCustomObject]@{
+
             Success       = $true
+
             BackupPath    = $backupPath
+
             RestorePoint  = $restoreStatus.Status
+
             RestoreReason = $restoreStatus.Reason
+
             CreatedAt     = Get-Date
+
             RepairName    = $RepairName
         }
     }
@@ -657,17 +684,26 @@ function New-REWinRepairBackup {
         Write-REWinRepairLog `
             ("BACKUP ERROR: {0}" -f $_.Exception.Message)
 
-        return [PSCustomObject]@{
+
+        [PSCustomObject]@{
+
             Success       = $false
+
             BackupPath    = $backupPath
+
             RestorePoint  = "UNKNOWN"
+
             RestoreReason = $_.Exception.Message
+
             CreatedAt     = Get-Date
+
             RepairName    = $RepairName
+
             Error         = $_.Exception.Message
         }
     }
 }
+
 
 # ============================================================
 # RESTORE POINT
@@ -688,11 +724,15 @@ function New-REWinRestorePoint {
             ("Restore point not available: {0}" -f $status.Reason)
 
         return [PSCustomObject]@{
+
             Success = $false
+
             Status  = "NOT_AVAILABLE"
+
             Reason  = $status.Reason
         }
     }
+
 
     try {
 
@@ -701,12 +741,17 @@ function New-REWinRestorePoint {
             -RestorePointType "MODIFY_SETTINGS" `
             -ErrorAction Stop
 
+
         Write-REWinRepairLog `
             ("Restore point created: {0}" -f $Description)
 
+
         return [PSCustomObject]@{
+
             Success = $true
+
             Status  = "CREATED"
+
             Reason  = "Restore point created successfully."
         }
     }
@@ -715,13 +760,18 @@ function New-REWinRestorePoint {
         Write-REWinRepairLog `
             ("Restore point creation failed: {0}" -f $_.Exception.Message)
 
+
         return [PSCustomObject]@{
+
             Success = $false
+
             Status  = "FAILED"
+
             Reason  = $_.Exception.Message
         }
     }
 }
+
 
 # ============================================================
 # COMMAND EXECUTION
@@ -737,6 +787,7 @@ function Invoke-REWinRepairCommand {
         [string]$Arguments
     )
 
+
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmssfff"
 
     $outputFile = Join-Path `
@@ -747,8 +798,10 @@ function Invoke-REWinRepairCommand {
         $env:TEMP `
         "REWin_Repair_Error_$timestamp.txt"
 
+
     Write-REWinRepairLog `
         ("COMMAND START: {0} {1}" -f $FilePath,$Arguments)
+
 
     try {
 
@@ -762,6 +815,7 @@ function Invoke-REWinRepairCommand {
             -RedirectStandardError $errorFile `
             -ErrorAction Stop
 
+
         $output = ""
 
         if (Test-Path $outputFile) {
@@ -771,6 +825,7 @@ function Invoke-REWinRepairCommand {
                 -Raw `
                 -ErrorAction SilentlyContinue
         }
+
 
         $errorOutput = ""
 
@@ -782,16 +837,25 @@ function Invoke-REWinRepairCommand {
                 -ErrorAction SilentlyContinue
         }
 
+
         Write-REWinRepairLog `
             ("COMMAND EXIT CODE: {0}" -f $process.ExitCode)
 
-        return [PSCustomObject]@{
+
+        [PSCustomObject]@{
+
             Success    = ($process.ExitCode -eq 0)
+
             ExitCode   = $process.ExitCode
+
             Output     = $output
+
             Error      = $errorOutput
+
             OutputFile = $outputFile
+
             FilePath   = $FilePath
+
             Arguments  = $Arguments
         }
     }
@@ -800,17 +864,26 @@ function Invoke-REWinRepairCommand {
         Write-REWinRepairLog `
             ("COMMAND ERROR: {0}" -f $_.Exception.Message)
 
-        return [PSCustomObject]@{
+
+        [PSCustomObject]@{
+
             Success    = $false
+
             ExitCode   = -1
+
             Output     = ""
+
             Error      = $_.Exception.Message
+
             OutputFile = $outputFile
+
             FilePath   = $FilePath
+
             Arguments  = $Arguments
         }
     }
 }
+
 
 # ============================================================
 # INDIVIDUAL REPAIR FUNCTIONS
@@ -823,12 +896,14 @@ function Repair-REWinSystemFiles {
         -Arguments "/scannow"
 }
 
+
 function Repair-REWinComponentStore {
 
     return Invoke-REWinRepairCommand `
         -FilePath "DISM.exe" `
         -Arguments "/Online /Cleanup-Image /RestoreHealth"
 }
+
 
 function Repair-REWinDNSCache {
 
@@ -837,9 +912,11 @@ function Repair-REWinDNSCache {
         -Arguments "/flushdns"
 }
 
+
 function Repair-REWinNetworkStack {
 
     $results = @()
+
 
     $winsock = Invoke-REWinRepairCommand `
         -FilePath "netsh.exe" `
@@ -847,24 +924,29 @@ function Repair-REWinNetworkStack {
 
     $results += $winsock
 
+
     $tcpip = Invoke-REWinRepairCommand `
         -FilePath "netsh.exe" `
         -Arguments "int ip reset"
 
     $results += $tcpip
 
+
     return $results
 }
+
 
 function Repair-REWinWindowsUpdateServices {
 
     $results = @()
+
 
     $services = @(
         "wuauserv",
         "BITS",
         "UsoSvc"
     )
+
 
     foreach ($serviceName in $services) {
 
@@ -874,32 +956,47 @@ function Repair-REWinWindowsUpdateServices {
                 -Name $serviceName `
                 -ErrorAction Stop
 
+
             if ($service.Status -ne "Running") {
 
                 Start-Service `
                     -Name $serviceName `
                     -ErrorAction Stop
 
+
                 Write-REWinRepairLog `
                     ("SERVICE STARTED: {0}" -f $serviceName)
 
+
                 $results += [PSCustomObject]@{
+
                     Success   = $true
+
                     ExitCode  = 0
+
                     Output    = "Service started: $serviceName"
+
                     Error     = ""
+
                     FilePath  = "Start-Service"
+
                     Arguments = $serviceName
                 }
             }
             else {
 
                 $results += [PSCustomObject]@{
+
                     Success   = $true
+
                     ExitCode  = 0
+
                     Output    = "Service already running: $serviceName"
+
                     Error     = ""
+
                     FilePath  = "Start-Service"
+
                     Arguments = $serviceName
                 }
             }
@@ -909,19 +1006,28 @@ function Repair-REWinWindowsUpdateServices {
             Write-REWinRepairLog `
                 ("SERVICE ERROR: {0} - {1}" -f $serviceName,$_.Exception.Message)
 
+
             $results += [PSCustomObject]@{
+
                 Success   = $false
+
                 ExitCode  = -1
+
                 Output    = ""
+
                 Error     = $_.Exception.Message
+
                 FilePath  = "Start-Service"
+
                 Arguments = $serviceName
             }
         }
     }
 
+
     return $results
 }
+
 
 # ============================================================
 # REPAIR HEALTH TEST
@@ -931,13 +1037,19 @@ function Test-REWinRepairHealth {
 
     $health = Get-REWinHealthSnapshot
 
+
     return [PSCustomObject]@{
+
         Available = $health.Available
+
         Score     = $health.Score
+
         Status    = $health.Status
+
         Report    = $health.Report
     }
 }
+
 
 # ============================================================
 # MAIN REPAIR ENGINE
@@ -951,7 +1063,9 @@ function Invoke-REWinRepair {
         [int]$Id
     )
 
+
     $options = Get-REWinRepairOptions
+
 
     $repair = $options |
         Where-Object {
@@ -959,17 +1073,20 @@ function Invoke-REWinRepair {
         } |
         Select-Object -First 1
 
+
     if ($null -eq $repair) {
 
         throw "Invalid REWin repair ID: $Id"
     }
 
+
     Write-REWinRepairLog `
         ("REPAIR START: [{0}] {1}" -f $repair.Id,$repair.Name)
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # BEFORE HEALTH
-    # ========================================================
+    # --------------------------------------------------------
 
     Write-REWinRepairLog "BEFORE HEALTH START"
 
@@ -981,44 +1098,63 @@ function Invoke-REWinRepair {
             $beforeHealth.Score,
             $beforeHealth.Status)
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # BACKUP
-    # ========================================================
+    # --------------------------------------------------------
 
     $backup = New-REWinRepairBackup `
         -RepairName $repair.Name
+
 
     if (-not $backup.Success) {
 
         Write-REWinRepairLog `
             "REPAIR ABORTED: Backup failed."
 
+
         return [PSCustomObject]@{
+
             Success         = $false
+
             RepairId        = $repair.Id
+
             RepairName      = $repair.Name
+
             Risk            = $repair.Risk
+
             RepairStatus    = "BACKUP_FAILED"
+
             RepairSummary   = "Repair was not executed because backup creation failed."
+
             BackupPath      = $backup.BackupPath
-            BackupStatus    = "FAILED"
+
             RestorePoint    = $backup.RestorePoint
+
             RestoreReason   = $backup.RestoreReason
+
             BeforeHealth    = $beforeHealth
+
             AfterHealth     = $beforeHealth
+
             HealthBefore    = $beforeHealth.Score
+
             HealthAfter     = $beforeHealth.Score
+
             HealthDelta     = 0
+
             HealthChanged   = $false
+
             CommandResults  = @()
-            RestoreOperation = $null
+
             CompletedAt     = Get-Date
         }
     }
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # RESTORE POINT
-    # ========================================================
+    # --------------------------------------------------------
 
     Write-REWinRepairLog "RESTORE POINT CHECK START"
 
@@ -1028,13 +1164,15 @@ function Invoke-REWinRepair {
     Write-REWinRepairLog `
         ("RESTORE POINT CHECK COMPLETE: {0}" -f $restorePoint.Status)
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # EXECUTE REPAIR
-    # ========================================================
+    # --------------------------------------------------------
 
     Write-REWinRepairLog "REPAIR COMMAND EXECUTION START"
 
     $commandResults = @()
+
 
     switch ($Id) {
 
@@ -1045,12 +1183,14 @@ function Invoke-REWinRepair {
             )
         }
 
+
         2 {
 
             $commandResults = @(
                 Repair-REWinComponentStore
             )
         }
+
 
         3 {
 
@@ -1059,12 +1199,14 @@ function Invoke-REWinRepair {
             )
         }
 
+
         4 {
 
             $commandResults = @(
                 Repair-REWinNetworkStack
             )
         }
+
 
         5 {
 
@@ -1074,9 +1216,12 @@ function Invoke-REWinRepair {
         }
     }
 
+
     Write-REWinRepairLog "REPAIR COMMAND EXECUTION COMPLETE"
 
+
     $allCommandsSuccessful = $true
+
 
     foreach ($commandResult in $commandResults) {
 
@@ -1086,9 +1231,10 @@ function Invoke-REWinRepair {
         }
     }
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # AFTER HEALTH
-    # ========================================================
+    # --------------------------------------------------------
 
     Write-REWinRepairLog "AFTER HEALTH START"
 
@@ -1100,9 +1246,10 @@ function Invoke-REWinRepair {
             $afterHealth.Score,
             $afterHealth.Status)
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # HEALTH COMPARISON
-    # ========================================================
+    # --------------------------------------------------------
 
     Write-REWinRepairLog "HEALTH COMPARISON START"
 
@@ -1116,35 +1263,42 @@ function Invoke-REWinRepair {
             $healthComparison.HealthAfter,
             $healthComparison.HealthDelta)
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # SUMMARY
-    # ========================================================
+    # --------------------------------------------------------
 
     $summary = Get-REWinRepairSummary `
         -RepairId $Id `
         -Success $allCommandsSuccessful `
         -CommandResults $commandResults
 
+
     $repairStatus = "SUCCESS"
+
 
     if (-not $allCommandsSuccessful) {
 
         $repairStatus = "FAILED"
     }
 
-    # ========================================================
+
+    # --------------------------------------------------------
     # RESULT
-    # ========================================================
+    # --------------------------------------------------------
 
     $result = [PSCustomObject]@{
 
         Success          = $allCommandsSuccessful
 
         RepairId         = $repair.Id
+
         RepairName       = $repair.Name
+
         Risk             = $repair.Risk
 
         RepairStatus     = $repairStatus
+
         RepairSummary    = $summary
 
         BackupPath       = $backup.BackupPath
@@ -1157,16 +1311,21 @@ function Invoke-REWinRepair {
         }
 
         RestorePoint     = $backup.RestorePoint
+
         RestoreReason    = $backup.RestoreReason
 
         CreatedAt        = $backup.CreatedAt
 
         BeforeHealth     = $beforeHealth
+
         AfterHealth      = $afterHealth
 
         HealthBefore     = $healthComparison.HealthBefore
+
         HealthAfter      = $healthComparison.HealthAfter
+
         HealthDelta      = $healthComparison.HealthDelta
+
         HealthChanged    = $healthComparison.HealthChanged
 
         CommandResults   = $commandResults
@@ -1176,19 +1335,87 @@ function Invoke-REWinRepair {
         CompletedAt      = Get-Date
     }
 
+
     # ========================================================
     # SAVE RESULT
     # ========================================================
 
     Write-REWinRepairLog "RESULT FILE WRITE START"
 
+
     try {
 
-        $result |
-            ConvertTo-Json -Depth 12 |
+        # ----------------------------------------------------
+        # COMPACT RESULT
+        # ----------------------------------------------------
+        # The complete HealthReport contains many nested
+        # objects. Do not serialize the full health report.
+        # Save only the useful repair information.
+
+        $resultForFile = [PSCustomObject]@{
+
+            Success       = $result.Success
+
+            RepairId      = $result.RepairId
+
+            RepairName    = $result.RepairName
+
+            Risk          = $result.Risk
+
+            RepairStatus  = $result.RepairStatus
+
+            RepairSummary = $result.RepairSummary
+
+            BackupPath    = $result.BackupPath
+
+            BackupStatus  = $result.BackupStatus
+
+            RestorePoint  = $result.RestorePoint
+
+            RestoreReason = $result.RestoreReason
+
+            CreatedAt     = $result.CreatedAt
+
+            HealthBefore  = $result.HealthBefore
+
+            HealthAfter   = $result.HealthAfter
+
+            HealthDelta   = $result.HealthDelta
+
+            HealthChanged = $result.HealthChanged
+
+            CommandResults = @(
+                $result.CommandResults |
+                    ForEach-Object {
+
+                        [PSCustomObject]@{
+
+                            Success   = $_.Success
+
+                            ExitCode  = $_.ExitCode
+
+                            FilePath  = $_.FilePath
+
+                            Arguments = $_.Arguments
+
+                            Output    = $_.Output
+
+                            Error     = $_.Error
+                        }
+                    }
+            )
+
+            CompletedAt = $result.CompletedAt
+        }
+
+
+        $resultForFile |
+            ConvertTo-Json -Depth 6 |
             Set-Content `
                 -Path (Join-Path $backup.BackupPath "RepairResult.json") `
-                -Encoding UTF8
+                -Encoding UTF8 `
+                -ErrorAction Stop
+
 
         Write-REWinRepairLog "RESULT FILE WRITE COMPLETE"
     }
@@ -1198,6 +1425,7 @@ function Invoke-REWinRepair {
             ("RESULT FILE WRITE ERROR: {0}" -f $_.Exception.Message)
     }
 
+
     # ========================================================
     # FINAL LOG
     # ========================================================
@@ -1205,20 +1433,26 @@ function Invoke-REWinRepair {
     Write-REWinRepairLog `
         ("REPAIR STATUS: {0}" -f $repairStatus)
 
+
     Write-REWinRepairLog `
         ("HEALTH BEFORE: {0}" -f $healthComparison.HealthBefore)
+
 
     Write-REWinRepairLog `
         ("HEALTH AFTER: {0}" -f $healthComparison.HealthAfter)
 
+
     Write-REWinRepairLog `
         ("HEALTH DELTA: {0}" -f $healthComparison.HealthDelta)
+
 
     Write-REWinRepairLog `
         ("REPAIR COMPLETE: {0}" -f $repair.Name)
 
+
     return $result
 }
+
 
 # ============================================================
 # EXPORTS
