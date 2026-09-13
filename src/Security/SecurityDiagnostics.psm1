@@ -3,9 +3,9 @@ function Get-REWinSecurityDiagnostics {
     $Reasons = @()
     $HealthScore = 100
 
-    # ------------------------------------------------------------
-    # Windows Defender
-    # ------------------------------------------------------------
+    # ============================================================
+    # WINDOWS DEFENDER
+    # ============================================================
 
     $Defender = $null
 
@@ -13,7 +13,6 @@ function Get-REWinSecurityDiagnostics {
         $Defender = Get-MpComputerStatus -ErrorAction Stop
     }
     catch {
-        $Defender = $null
         $Reasons += "Windows Defender status is unavailable."
         $HealthScore -= 15
     }
@@ -24,18 +23,18 @@ function Get-REWinSecurityDiagnostics {
             "OK"
         }
         else {
-            "WARNING"
             $Reasons += "Windows Defender antivirus is disabled."
             $HealthScore -= 25
+            "WARNING"
         }
 
         $RealTimeStatus = if ($Defender.RealTimeProtectionEnabled) {
             "OK"
         }
         else {
-            "WARNING"
             $Reasons += "Real-time protection is disabled."
             $HealthScore -= 20
+            "WARNING"
         }
 
         $SignatureAge = $null
@@ -60,18 +59,58 @@ function Get-REWinSecurityDiagnostics {
         else {
             "WARNING"
         }
+
+        $AntispywareEnabled = [bool]$Defender.AntispywareEnabled
+        $BehaviorMonitorEnabled = [bool]$Defender.BehaviorMonitorEnabled
+        $IOAVProtectionEnabled = [bool]$Defender.IOAVProtectionEnabled
+        $PUAProtection = $Defender.PUAProtection
+
+        if (-not $AntispywareEnabled) {
+            $Reasons += "Windows Defender antispyware protection is disabled."
+            $HealthScore -= 10
+        }
+
+        if (-not $BehaviorMonitorEnabled) {
+            $Reasons += "Windows Defender behavior monitoring is disabled."
+            $HealthScore -= 10
+        }
     }
     else {
+
         $DefenderStatus = "UNKNOWN"
         $RealTimeStatus = "UNKNOWN"
         $SignatureStatus = "UNKNOWN"
+
         $SignatureAge = $null
+        $AntispywareEnabled = $false
+        $BehaviorMonitorEnabled = $false
+        $IOAVProtectionEnabled = $false
+        $PUAProtection = "UNKNOWN"
     }
 
 
-    # ------------------------------------------------------------
-    # Windows Firewall
-    # ------------------------------------------------------------
+    # ============================================================
+    # DEFENDER SCAN INFORMATION
+    # ============================================================
+
+    $QuickScanStart = $null
+    $QuickScanEnd = $null
+    $FullScanStart = $null
+    $FullScanEnd = $null
+
+    if ($Defender) {
+
+        $QuickScanStart = $Defender.QuickScanStartTime
+        $QuickScanEnd = $Defender.QuickScanEndTime
+
+        $FullScanStart = $Defender.FullScanStartTime
+        $FullScanEnd = $Defender.FullScanEndTime
+    }
+
+
+    # ============================================================
+    # WINDOWS FIREWALL
+    # ============================================================
 
     $FirewallProfiles = @()
     $FirewallProblemCount = 0
@@ -79,7 +118,11 @@ function Get-REWinSecurityDiagnostics {
     try {
 
         $FirewallProfiles = Get-NetFirewallProfile -ErrorAction Stop |
-            Select-Object Name, Enabled
+            Select-Object `
+                Name,
+                Enabled,
+                DefaultInboundAction,
+                DefaultOutboundAction
 
         $FirewallProblemCount = @(
             $FirewallProfiles |
@@ -94,15 +137,16 @@ function Get-REWinSecurityDiagnostics {
         }
     }
     catch {
-        $FirewallProfiles = @()
+
         $Reasons += "Windows Firewall status is unavailable."
         $HealthScore -= 10
+        $FirewallProfiles = @()
     }
 
 
-    # ------------------------------------------------------------
+    # ============================================================
     # UAC
-    # ------------------------------------------------------------
+    # ============================================================
 
     $UACEnabled = $false
 
@@ -125,14 +169,16 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
-    # ------------------------------------------------------------
-    # Secure Boot
-    # ------------------------------------------------------------
+    # ============================================================
+    # SECURE BOOT
+    # ============================================================
 
     $SecureBootEnabled = $null
 
     try {
-        $SecureBootEnabled = Confirm-SecureBootUEFI -ErrorAction Stop
+
+        $SecureBootEnabled = Confirm-SecureBootUEFI `
+            -ErrorAction Stop
 
         if (-not $SecureBootEnabled) {
             $Reasons += "Secure Boot is disabled."
@@ -144,9 +190,9 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
-    # ------------------------------------------------------------
+    # ============================================================
     # TPM
-    # ------------------------------------------------------------
+    # ============================================================
 
     $TPMPresent = $false
     $TPMReady = $false
@@ -169,6 +215,7 @@ function Get-REWinSecurityDiagnostics {
         }
 
         try {
+
             $TPMInfo = Get-CimInstance `
                 -Namespace "root\CIMV2\Security\MicrosoftTpm" `
                 -ClassName Win32_Tpm `
@@ -187,9 +234,56 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
-    # ------------------------------------------------------------
-    # Windows Security Center
-    # ------------------------------------------------------------
+    # ============================================================
+    # BITLOCKER
+    # ============================================================
+
+    $BitLockerVolumes = @()
+    $BitLockerProblemCount = 0
+
+    try {
+
+        $BitLockerVolumes = Get-BitLockerVolume `
+            -ErrorAction Stop |
+            Select-Object `
+                MountPoint,
+                VolumeStatus,
+                ProtectionStatus,
+                EncryptionMethod
+
+        foreach ($Volume in $BitLockerVolumes) {
+
+            if (
+                $Volume.VolumeStatus -eq "FullyDecrypted" -and
+                $Volume.MountPoint -eq $env:SystemDrive
+            ) {
+                $BitLockerProblemCount++
+
+                $Reasons += "System drive BitLocker encryption is disabled."
+                $HealthScore -= 10
+            }
+
+            if (
+                $Volume.VolumeStatus -eq "FullyEncrypted" -and
+                $Volume.ProtectionStatus -ne "On" -and
+                $Volume.MountPoint -eq $env:SystemDrive
+            ) {
+                $BitLockerProblemCount++
+
+                $Reasons += "System drive BitLocker protection is suspended."
+                $HealthScore -= 10
+            }
+        }
+    }
+    catch {
+
+        $BitLockerVolumes = @()
+    }
+
+
+    # ============================================================
+    # WINDOWS SECURITY CENTER
+    # ============================================================
 
     $SecurityCenterStatus = "UNKNOWN"
 
@@ -204,6 +298,7 @@ function Get-REWinSecurityDiagnostics {
         }
         else {
             $SecurityCenterStatus = "WARNING"
+
             $Reasons += "Windows Security Center service is not running."
             $HealthScore -= 10
         }
@@ -213,9 +308,9 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
-    # ------------------------------------------------------------
-    # Defender Service
-    # ------------------------------------------------------------
+    # ============================================================
+    # DEFENDER SERVICE
+    # ============================================================
 
     $DefenderServiceStatus = "UNKNOWN"
 
@@ -237,9 +332,9 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
-    # ------------------------------------------------------------
-    # Health Status
-    # ------------------------------------------------------------
+    # ============================================================
+    # HEALTH SCORE
+    # ============================================================
 
     if ($HealthScore -lt 0) {
         $HealthScore = 0
@@ -259,6 +354,10 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
+    # ============================================================
+    # OVERALL STATUS
+    # ============================================================
+
     if (
         $DefenderStatus -eq "WARNING" -or
         $RealTimeStatus -eq "WARNING" -or
@@ -272,9 +371,9 @@ function Get-REWinSecurityDiagnostics {
     }
 
 
-    # ------------------------------------------------------------
-    # Result
-    # ------------------------------------------------------------
+    # ============================================================
+    # RESULT
+    # ============================================================
 
     [PSCustomObject]@{
 
@@ -286,6 +385,11 @@ function Get-REWinSecurityDiagnostics {
         DefenderStatus          = $DefenderStatus
         DefenderServiceStatus   = $DefenderServiceStatus
         RealTimeProtection      = $RealTimeStatus
+
+        AntispywareEnabled      = $AntispywareEnabled
+        BehaviorMonitorEnabled  = $BehaviorMonitorEnabled
+        IOAVProtectionEnabled   = $IOAVProtectionEnabled
+        PUAProtection           = $PUAProtection
 
         SignatureStatus         = $SignatureStatus
         SignatureAgeDays        = if ($SignatureAge -ne $null) {
@@ -302,6 +406,26 @@ function Get-REWinSecurityDiagnostics {
             $null
         }
 
+        QuickScanStartTime      = $QuickScanStart
+        QuickScanEndTime        = $QuickScanEnd
+
+        FullScanStartTime       = $FullScanStart
+        FullScanEndTime         = $FullScanEnd
+
+        DefenderEngineVersion   = if ($Defender) {
+            $Defender.AMEngineVersion
+        }
+        else {
+            $null
+        }
+
+        DefenderPlatformVersion = if ($Defender) {
+            $Defender.AMProductVersion
+        }
+        else {
+            $null
+        }
+
         FirewallProfiles        = $FirewallProfiles
         FirewallProblemCount    = $FirewallProblemCount
 
@@ -312,6 +436,9 @@ function Get-REWinSecurityDiagnostics {
         TPMPresent              = $TPMPresent
         TPMReady                = $TPMReady
         TPMVersion              = $TPMVersion
+
+        BitLockerVolumes        = $BitLockerVolumes
+        BitLockerProblemCount   = $BitLockerProblemCount
 
         SecurityCenterStatus    = $SecurityCenterStatus
     }
