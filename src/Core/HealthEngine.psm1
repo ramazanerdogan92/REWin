@@ -32,87 +32,102 @@ function Get-REWinHealthEngine {
 
     $Scores = [ordered]@{}
 
-    # System
-    $Scores.System = if ($System.Status -eq "OK") {
-        100
-    }
-    else {
-        70
+    # ------------------------------------------------------------
+    # Helper: Read HealthScore safely
+    # ------------------------------------------------------------
+
+    function Get-SafeHealthScore {
+
+        param(
+            [Parameter(Mandatory)]
+            $Module,
+
+            [Parameter(Mandatory)]
+            [string]$ModuleName
+        )
+
+        try {
+
+            # Prefer the diagnostic module HealthScore
+            if ($null -ne $Module.HealthScore) {
+
+                $Value = [int]$Module.HealthScore
+
+                if ($Value -lt 0) {
+                    return 0
+                }
+
+                if ($Value -gt 100) {
+                    return 100
+                }
+
+                return $Value
+            }
+
+            # Fallback based on Status
+            switch ($Module.Status) {
+
+                "OK" {
+                    return 100
+                }
+
+                "WARNING" {
+                    return 80
+                }
+
+                "CRITICAL" {
+                    return 40
+                }
+
+                default {
+                    return 60
+                }
+            }
+        }
+        catch {
+
+            # Diagnostic module could not provide a valid score.
+            # Use a conservative score instead of silently failing.
+            return 60
+        }
     }
 
-    # Disk
-    if ($Disk.Status -contains "CRITICAL") {
-        $Scores.Disk = 30
-    }
-    elseif ($Disk.Status -contains "WARNING") {
-        $Scores.Disk = 60
-    }
-    else {
-        $Scores.Disk = 100
-    }
 
-    # Network
-    if ($Network.HealthScore -ne $null) {
-        $Scores.Network = [int]$Network.HealthScore
-    }
-    elseif ($Network.Status -eq "OK") {
-        $Scores.Network = 100
-    }
-    else {
-        $Scores.Network = 60
-    }
+    # ============================================================
+    # READ MODULE SCORES
+    # ============================================================
 
-    # Windows Update
-    $Scores.WindowsUpdate = if ($WindowsUpdate.Status -eq "OK") {
-        100
-    }
-    else {
-        80
-    }
+    $Scores.System = Get-SafeHealthScore `
+        -Module $System `
+        -ModuleName "System"
 
-    # Event Log
-    if ($EventLog.Status -eq "OK") {
-        $Scores.EventLog = 100
-    }
-    elseif ($EventLog.Status -eq "WARNING") {
-        $Scores.EventLog = 80
-    }
-    else {
-        $Scores.EventLog = 50
-    }
+    $Scores.Disk = Get-SafeHealthScore `
+        -Module $Disk `
+        -ModuleName "Disk"
 
-    # Crash
-    if ($Crash.Status -eq "OK") {
-        $Scores.Crash = 100
-    }
-    elseif ($Crash.Status -eq "WARNING") {
-        $Scores.Crash = 80
-    }
-    else {
-        $Scores.Crash = 40
-    }
+    $Scores.Network = Get-SafeHealthScore `
+        -Module $Network `
+        -ModuleName "Network"
 
-    # Hardware
-    if ($Hardware.HealthScore -ne $null) {
-        $Scores.Hardware = [int]$Hardware.HealthScore
-    }
-    elseif ($Hardware.Status -eq "OK") {
-        $Scores.Hardware = 100
-    }
-    else {
-        $Scores.Hardware = 60
-    }
+    $Scores.WindowsUpdate = Get-SafeHealthScore `
+        -Module $WindowsUpdate `
+        -ModuleName "WindowsUpdate"
 
-    # Security
-    if ($Security.HealthScore -ne $null) {
-        $Scores.Security = [int]$Security.HealthScore
-    }
-    elseif ($Security.Status -eq "OK") {
-        $Scores.Security = 100
-    }
-    else {
-        $Scores.Security = 60
-    }
+    $Scores.EventLog = Get-SafeHealthScore `
+        -Module $EventLog `
+        -ModuleName "EventLog"
+
+    $Scores.Crash = Get-SafeHealthScore `
+        -Module $Crash `
+        -ModuleName "Crash"
+
+    $Scores.Hardware = Get-SafeHealthScore `
+        -Module $Hardware `
+        -ModuleName "Hardware"
+
+    $Scores.Security = Get-SafeHealthScore `
+        -Module $Security `
+        -ModuleName "Security"
 
 
     # ============================================================
@@ -148,12 +163,14 @@ function Get-REWinHealthEngine {
     }
 
     if ($WeightTotal -gt 0) {
+
         $OverallScore = [math]::Round(
-            $WeightedTotal / $WeightTotal,
+            ($WeightedTotal / $WeightTotal),
             0
         )
     }
     else {
+
         $OverallScore = 0
     }
 
@@ -163,15 +180,19 @@ function Get-REWinHealthEngine {
     # ============================================================
 
     if ($OverallScore -ge 90) {
+
         $OverallStatus = "EXCELLENT"
     }
     elseif ($OverallScore -ge 75) {
+
         $OverallStatus = "GOOD"
     }
     elseif ($OverallScore -ge 50) {
+
         $OverallStatus = "WARNING"
     }
     else {
+
         $OverallStatus = "CRITICAL"
     }
 
@@ -200,22 +221,26 @@ function Get-REWinHealthEngine {
     # SUMMARY
     # ============================================================
 
-    $Summary = switch ($OverallStatus) {
+    switch ($OverallStatus) {
 
         "EXCELLENT" {
-            "System health is excellent."
+
+            $Summary = "System health is excellent."
         }
 
         "GOOD" {
-            "System is healthy with some areas that can be improved."
+
+            $Summary = "System is healthy with some areas that can be improved."
         }
 
         "WARNING" {
-            "System requires attention in one or more areas."
+
+            $Summary = "System requires attention in one or more areas."
         }
 
         "CRITICAL" {
-            "System has critical health issues that require attention."
+
+            $Summary = "System has critical health issues that require attention."
         }
     }
 
@@ -245,6 +270,7 @@ function Get-REWinHealthEngine {
         Security      = $Scores.Security
     }
 }
+
 
 Export-ModuleMember -Function `
     Get-REWinHealthEngine

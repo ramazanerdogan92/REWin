@@ -1,62 +1,74 @@
 # ============================================================
-# REWin
-# Windows IT Diagnostics Toolkit
-# Main Launcher V3
+# REWin - Windows IT Toolkit
+# Main Launcher
 # ============================================================
 
-$REWinRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ErrorActionPreference = "SilentlyContinue"
 
-$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 $InformationPreference = "SilentlyContinue"
 $VerbosePreference = "SilentlyContinue"
 $DebugPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
+# ============================================================
+# PATHS
+# ============================================================
+
+$REWinRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+$CorePath = Join-Path $REWinRoot "src\Core"
+$DiagnosticsPath = Join-Path $REWinRoot "src\Diagnostics"
+$SecurityPath = Join-Path $REWinRoot "src\Security"
+$RepairPath = Join-Path $REWinRoot "src\Repair"
 
 # ============================================================
-# LOAD MODULES
+# MODULES
 # ============================================================
 
-$ModulePaths = @(
-    "$REWinRoot\src\Core\Logger.psm1",
-    "$REWinRoot\src\Core\Privilege.psm1",
-    "$REWinRoot\src\Core\Backup.psm1",
-    "$REWinRoot\src\Core\HealthReport.psm1",
-    "$REWinRoot\src\Core\HealthReportHtml.psm1",
-    "$REWinRoot\src\Diagnostics\SystemDiagnostics.psm1",
-    "$REWinRoot\src\Diagnostics\DiskDiagnostics.psm1",
-    "$REWinRoot\src\Diagnostics\NetworkDiagnostics.psm1",
-    "$REWinRoot\src\Diagnostics\WindowsUpdateDiagnostics.psm1",
-    "$REWinRoot\src\Diagnostics\EventLogDiagnostics.psm1",
-    "$REWinRoot\src\Diagnostics\CrashDiagnostics.psm1",
-    "$REWinRoot\src\Diagnostics\HardwareDiagnostics.psm1",
-    "$REWinRoot\src\Security\SecurityDiagnostics.psm1"
+$Modules = @(
+    (Join-Path $CorePath "Logger.psm1"),
+    (Join-Path $CorePath "Privilege.psm1"),
+    (Join-Path $CorePath "Backup.psm1"),
+    (Join-Path $CorePath "HealthEngine.psm1"),
+    (Join-Path $CorePath "HealthReport.psm1"),
+    (Join-Path $CorePath "HealthReportHtml.psm1"),
+
+    (Join-Path $DiagnosticsPath "SystemDiagnostics.psm1"),
+    (Join-Path $DiagnosticsPath "DiskDiagnostics.psm1"),
+    (Join-Path $DiagnosticsPath "NetworkDiagnostics.psm1"),
+    (Join-Path $DiagnosticsPath "WindowsUpdateDiagnostics.psm1"),
+    (Join-Path $DiagnosticsPath "EventLogDiagnostics.psm1"),
+    (Join-Path $DiagnosticsPath "CrashDiagnostics.psm1"),
+    (Join-Path $DiagnosticsPath "HardwareDiagnostics.psm1"),
+
+    (Join-Path $SecurityPath "SecurityDiagnostics.psm1"),
+
+    (Join-Path $RepairPath "RepairEngine.psm1")
 )
 
+foreach ($Module in $Modules) {
 
-foreach ($ModulePath in $ModulePaths) {
+    if (Test-Path $Module) {
 
-    if (Test-Path $ModulePath) {
-
-        Import-Module $ModulePath `
-            -Force `
-            -ErrorAction SilentlyContinue `
-            2>$null `
-            3>$null `
-            4>$null `
-            5>$null `
-            6>$null
+        try {
+            Import-Module $Module -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Host ""
+            Write-Host "Module load error:" -ForegroundColor Red
+            Write-Host $Module -ForegroundColor Red
+            Write-Host $_.Exception.Message -ForegroundColor Red
+            Write-Host ""
+        }
     }
 }
 
-
 # ============================================================
-# GLOBAL REPORT
+# GLOBAL HEALTH REPORT
 # ============================================================
 
 $Global:REWinHealthReport = $null
-
 
 # ============================================================
 # TITLE
@@ -67,131 +79,12 @@ function Show-REWinTitle {
     Clear-Host
 
     Write-Host ""
-    Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "                         REWin" -ForegroundColor White
-    Write-Host "              Windows IT Diagnostics Toolkit" -ForegroundColor Gray
-    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host " ==========================================================" -ForegroundColor Cyan
+    Write-Host "                         REWin" -ForegroundColor Cyan
+    Write-Host "                 Windows IT Toolkit" -ForegroundColor Gray
+    Write-Host " ==========================================================" -ForegroundColor Cyan
     Write-Host ""
 }
-
-
-# ============================================================
-# HEALTH CHECK
-# ============================================================
-
-function Get-REWinCurrentHealth {
-
-    try {
-
-        $Global:REWinHealthReport = Get-REWinHealthReport `
-            -ErrorAction Stop `
-            2>$null `
-            3>$null `
-            4>$null `
-            5>$null `
-            6>$null
-
-        return $true
-    }
-    catch {
-
-        $Global:REWinHealthReport = $null
-
-        return $false
-    }
-}
-
-
-# ============================================================
-# HEALTH SUMMARY
-# ============================================================
-
-function Show-REWinHealth {
-
-    Write-Host " SYSTEM HEALTH" -ForegroundColor Cyan
-    Write-Host " ----------------------------------------------------------"
-
-    if ($null -eq $Global:REWinHealthReport) {
-
-        Write-Host " Status           : NOT SCANNED" -ForegroundColor Yellow
-        Write-Host ""
-
-        return
-    }
-
-
-    $Report = $Global:REWinHealthReport
-    $Score = [int]$Report.OverallScore
-
-
-    if ($Score -ge 90) {
-        $Color = "Green"
-    }
-    elseif ($Score -ge 75) {
-        $Color = "Cyan"
-    }
-    elseif ($Score -ge 50) {
-        $Color = "Yellow"
-    }
-    else {
-        $Color = "Red"
-    }
-
-
-    Write-Host " Overall Score    : " -NoNewline
-    Write-Host "$Score / 100" -ForegroundColor $Color
-
-    Write-Host " Overall Status   : " -NoNewline
-    Write-Host "$($Report.OverallStatus)" -ForegroundColor $Color
-
-    Write-Host " Issues           : $($Report.IssueCount)"
-
-    Write-Host " Critical         : $($Report.CriticalCount)"
-
-    Write-Host " Warnings         : $($Report.WarningCount)"
-
-    Write-Host ""
-}
-
-
-# ============================================================
-# ADMINISTRATOR
-# ============================================================
-
-function Show-REWinAdministrator {
-
-    Write-Host " ADMINISTRATOR" -ForegroundColor Cyan
-    Write-Host " ----------------------------------------------------------"
-
-    try {
-
-        $Privilege = Get-REWinPrivilegeStatus `
-            -ErrorAction Stop `
-            2>$null `
-            3>$null `
-            4>$null `
-            5>$null `
-            6>$null
-
-        if ($Privilege.IsAdministrator) {
-
-            Write-Host " Status           : " -NoNewline
-            Write-Host "YES" -ForegroundColor Green
-        }
-        else {
-
-            Write-Host " Status           : " -NoNewline
-            Write-Host "NO" -ForegroundColor Yellow
-        }
-    }
-    catch {
-
-        Write-Host " Status           : UNKNOWN" -ForegroundColor Yellow
-    }
-
-    Write-Host ""
-}
-
 
 # ============================================================
 # WAIT
@@ -200,16 +93,163 @@ function Show-REWinAdministrator {
 function Wait-REWin {
 
     Write-Host ""
-
     Read-Host "Press ENTER to continue"
 }
 
+# ============================================================
+# ADMINISTRATOR
+# ============================================================
+
+function Show-REWinAdministrator {
+
+    try {
+
+        if (Test-REWinAdministrator) {
+
+            Write-Host "Administrator    : YES" -ForegroundColor Green
+
+        }
+        else {
+
+            Write-Host "Administrator    : NO" -ForegroundColor Red
+        }
+
+    }
+    catch {
+
+        Write-Host "Administrator    : UNKNOWN" -ForegroundColor Yellow
+    }
+}
 
 # ============================================================
-# QUICK HEALTH
+# CURRENT HEALTH
 # ============================================================
 
-function Invoke-REWinQuickHealth {
+function Get-REWinCurrentHealth {
+
+    if ($null -eq $Global:REWinHealthReport) {
+
+        try {
+
+            $Global:REWinHealthReport = Get-REWinHealthReport
+
+        }
+        catch {
+
+            return $null
+        }
+    }
+
+    return $Global:REWinHealthReport
+}
+
+# ============================================================
+# HEALTH DISPLAY
+# ============================================================
+
+function Show-REWinHealth {
+
+    Show-REWinTitle
+
+    Write-Host " SYSTEM HEALTH" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
+    Write-Host ""
+
+    $Report = Get-REWinCurrentHealth
+
+    if ($null -eq $Report) {
+
+        Write-Host "System Health    : NOT SCANNED" -ForegroundColor Yellow
+        Write-Host ""
+
+        Wait-REWin
+        return
+    }
+
+    Write-Host "Overall Score    : " -NoNewline
+
+    if ($Report.OverallScore -ge 90) {
+        Write-Host "$($Report.OverallScore)/100" -ForegroundColor Green
+    }
+    elseif ($Report.OverallScore -ge 70) {
+        Write-Host "$($Report.OverallScore)/100" -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "$($Report.OverallScore)/100" -ForegroundColor Red
+    }
+
+    Write-Host "Overall Status   : $($Report.OverallStatus)"
+    Write-Host ""
+
+    Write-Host "Attention        : " -NoNewline
+
+    if ($Report.AttentionRequired) {
+        Write-Host "REQUIRED" -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "NONE" -ForegroundColor Green
+    }
+
+    Write-Host ""
+    Write-Host "Issues           : $($Report.IssueCount)"
+    Write-Host "Critical         : $($Report.CriticalCount)"
+    Write-Host "Warnings         : $($Report.WarningCount)"
+    Write-Host ""
+
+    Write-Host "MODULE SCORES"
+    Write-Host " ----------------------------------------------------------"
+
+    foreach ($ModuleScore in $Report.ModuleScores) {
+
+        Write-Host ""
+
+        Write-Host ("{0,-18}" -f $ModuleScore.Name) -NoNewline
+        Write-Host "$($ModuleScore.Score)/100" -NoNewline
+
+        if ($ModuleScore.Score -ge 90) {
+
+            Write-Host "  EXCELLENT" -ForegroundColor Green
+
+        }
+        elseif ($ModuleScore.Score -ge 70) {
+
+            Write-Host "  GOOD" -ForegroundColor Cyan
+
+        }
+        elseif ($ModuleScore.Score -ge 50) {
+
+            Write-Host "  WARNING" -ForegroundColor Yellow
+
+        }
+        else {
+
+            Write-Host "  CRITICAL" -ForegroundColor Red
+        }
+    }
+
+    if ($Report.Recommendations) {
+
+        Write-Host ""
+        Write-Host "RECOMMENDATIONS"
+        Write-Host " ----------------------------------------------------------"
+
+        foreach ($Recommendation in $Report.Recommendations) {
+
+            Write-Host ""
+            Write-Host " - $Recommendation" -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host ""
+
+    Wait-REWin
+}
+
+# ============================================================
+# QUICK HEALTH CHECK
+# ============================================================
+
+function Invoke-REWinQuickHealthCheck {
 
     Show-REWinTitle
 
@@ -217,305 +257,702 @@ function Invoke-REWinQuickHealth {
     Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
-    if (Get-REWinCurrentHealth) {
+    Write-Host "Running system health analysis..." -ForegroundColor Yellow
+    Write-Host ""
 
-        Show-REWinHealth
+    try {
 
-        if ($Global:REWinHealthReport.Recommendations) {
+        $Global:REWinHealthReport = Get-REWinHealthReport
 
-            Write-Host " RECOMMENDATIONS" -ForegroundColor Yellow
-            Write-Host " ----------------------------------------------------------"
+    }
+    catch {
 
-            foreach ($Recommendation in $Global:REWinHealthReport.Recommendations) {
+        Write-Host "Health scan failed." -ForegroundColor Red
+        Write-Host ""
+        Write-Host $_.Exception.Message -ForegroundColor Red
 
-                Write-Host "[!] " -ForegroundColor Yellow -NoNewline
+        Wait-REWin
+        return
+    }
 
-                Write-Host "$($Recommendation.Area): $($Recommendation.Message)"
-            }
-        }
+    Write-Host "Health Score     : " -NoNewline
+
+    if ($Global:REWinHealthReport.OverallScore -ge 90) {
+
+        Write-Host "$($Global:REWinHealthReport.OverallScore)/100" -ForegroundColor Green
+
+    }
+    elseif ($Global:REWinHealthReport.OverallScore -ge 70) {
+
+        Write-Host "$($Global:REWinHealthReport.OverallScore)/100" -ForegroundColor Cyan
+
+    }
+    elseif ($Global:REWinHealthReport.OverallScore -ge 50) {
+
+        Write-Host "$($Global:REWinHealthReport.OverallScore)/100" -ForegroundColor Yellow
+
     }
     else {
 
-        Write-Host "Health check failed." -ForegroundColor Red
+        Write-Host "$($Global:REWinHealthReport.OverallScore)/100" -ForegroundColor Red
     }
+
+    Write-Host "Health Status    : $($Global:REWinHealthReport.OverallStatus)"
+    Write-Host ""
+
+    Write-Host "Issues           : $($Global:REWinHealthReport.IssueCount)"
+    Write-Host "Critical         : $($Global:REWinHealthReport.CriticalCount)"
+    Write-Host "Warnings         : $($Global:REWinHealthReport.WarningCount)"
+    Write-Host ""
+
+    if ($Global:REWinHealthReport.Recommendations) {
+
+        Write-Host "Recommendations  : $($Global:REWinHealthReport.Recommendations.Count)"
+
+        foreach ($Recommendation in $Global:REWinHealthReport.Recommendations) {
+
+            Write-Host " - $Recommendation" -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host ""
 
     Wait-REWin
 }
 
-
 # ============================================================
-# SYSTEM
+# SYSTEM DIAGNOSTICS
 # ============================================================
 
-function Invoke-REWinSystem {
+function Invoke-REWinSystemDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " SYSTEM DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinSystemDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinSystemDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "System diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
-
 # ============================================================
-# DISK
+# DISK DIAGNOSTICS
 # ============================================================
 
-function Invoke-REWinDisk {
+function Invoke-REWinDiskDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " DISK DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinDiskDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-Table -AutoSize
+        $Result = Get-REWinDiskDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Disk diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
-
 # ============================================================
-# NETWORK
+# NETWORK DIAGNOSTICS
 # ============================================================
 
-function Invoke-REWinNetwork {
+function Invoke-REWinNetworkDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " NETWORK DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinNetworkDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinNetworkDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Network diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
-
 
 # ============================================================
 # WINDOWS UPDATE
 # ============================================================
 
-function Invoke-REWinWindowsUpdate {
+function Invoke-REWinWindowsUpdateDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " WINDOWS UPDATE DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinWindowsUpdateDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinWindowsUpdateDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Windows Update diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
-
 
 # ============================================================
 # EVENT LOG
 # ============================================================
 
-function Invoke-REWinEventLog {
+function Invoke-REWinEventLogDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " EVENT LOG DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinEventLogDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinEventLogDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Event Log diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
-
 # ============================================================
-# CRASH
+# CRASH DIAGNOSTICS
 # ============================================================
 
-function Invoke-REWinCrash {
+function Invoke-REWinCrashDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " CRASH DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinCrashDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinCrashDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Crash diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
-
 # ============================================================
-# HARDWARE
+# HARDWARE DIAGNOSTICS
 # ============================================================
 
-function Invoke-REWinHardware {
+function Invoke-REWinHardwareDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " HARDWARE DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinHardwareDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinHardwareDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Hardware diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
-
 # ============================================================
-# SECURITY
+# SECURITY DIAGNOSTICS
 # ============================================================
 
-function Invoke-REWinSecurity {
+function Invoke-REWinSecurityDiagnostics {
 
     Show-REWinTitle
 
     Write-Host " SECURITY DIAGNOSTICS" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        Get-REWinSecurityDiagnostics `
-            -ErrorAction Stop `
-            2>$null |
-            Format-List
+        $Result = Get-REWinSecurityDiagnostics
+
+        $Result | Format-List
+
     }
     catch {
 
+        Write-Host "Security diagnostics failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
-
 # ============================================================
-# HTML REPORT
+# HTML HEALTH REPORT
 # ============================================================
 
 function Invoke-REWinHtmlReport {
 
     Show-REWinTitle
 
-    Write-Host " GENERATING HTML HEALTH REPORT" -ForegroundColor Cyan
+    Write-Host " HTML HEALTH REPORT" -ForegroundColor Cyan
+    Write-Host " ----------------------------------------------------------"
     Write-Host ""
 
     try {
 
-        $Report = Get-REWinHealthReport `
-            -ErrorAction Stop `
-            2>$null `
-            3>$null `
-            4>$null `
-            5>$null `
-            6>$null
+        if ($null -eq $Global:REWinHealthReport) {
 
+            Write-Host "Health report not scanned yet." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Running health scan..." -ForegroundColor Yellow
+            Write-Host ""
 
-        $ReportPath = Join-Path `
-            $env:USERPROFILE `
-            "Desktop\REWin-HealthReport.html"
+            $Global:REWinHealthReport = Get-REWinHealthReport
+        }
 
-
-        Export-REWinHealthReport `
-            -Report $Report `
-            -Path $ReportPath `
-            -Language EN `
-            -ErrorAction Stop `
-            2>$null `
-            3>$null `
-            4>$null `
-            5>$null `
-            6>$null
-
+        $ReportPath = Export-REWinHealthReport `
+            -Report $Global:REWinHealthReport
 
         Write-Host ""
-        Write-Host "Report created successfully." -ForegroundColor Green
+        Write-Host "HTML report created successfully." -ForegroundColor Green
         Write-Host ""
+        Write-Host "Report Path:"
         Write-Host $ReportPath -ForegroundColor Cyan
 
+        if ($ReportPath -and (Test-Path $ReportPath)) {
 
-        Start-Process $ReportPath
+            Write-Host ""
+            Write-Host "Opening report..." -ForegroundColor Yellow
+
+            Start-Process $ReportPath
+        }
+
     }
     catch {
 
+        Write-Host "HTML report generation failed." -ForegroundColor Red
         Write-Host ""
-        Write-Host "Report generation failed." -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
 
     Wait-REWin
 }
 
+# ============================================================
+# REPAIR CENTER
+# ============================================================
+
+function Invoke-REWinRepairCenter {
+
+    do {
+
+        Show-REWinTitle
+
+        Write-Host " REPAIR CENTER" -ForegroundColor Cyan
+        Write-Host " ----------------------------------------------------------"
+        Write-Host ""
+
+        $Options = Get-REWinRepairOptions
+
+        foreach ($Option in $Options) {
+
+            $RiskColor = switch ($Option.Risk) {
+
+                "LOW" {
+                    "Green"
+                }
+
+                "MEDIUM" {
+                    "Yellow"
+                }
+
+                "HIGH" {
+                    "Red"
+                }
+
+                default {
+                    "White"
+                }
+            }
+
+            Write-Host " [$($Option.Id)] " -NoNewline
+            Write-Host "$($Option.Name)" -NoNewline
+            Write-Host " [$($Option.Risk)]" -ForegroundColor $RiskColor
+        }
+
+        Write-Host ""
+        Write-Host " [0] Back"
+        Write-Host ""
+
+        $RepairChoice = Read-Host "Select repair"
+
+        if ($RepairChoice -eq "0") {
+            break
+        }
+
+        $Selected = $Options |
+            Where-Object {
+                $_.Id -eq [int]$RepairChoice
+            } |
+            Select-Object -First 1
+
+        if (-not $Selected) {
+
+            Write-Host ""
+            Write-Host "Invalid repair option." -ForegroundColor Red
+
+            Start-Sleep -Seconds 1
+            continue
+        }
+
+        Show-REWinTitle
+
+        Write-Host " REPAIR CONFIRMATION" -ForegroundColor Cyan
+        Write-Host " ----------------------------------------------------------"
+        Write-Host ""
+
+        Write-Host "Repair          : $($Selected.Name)"
+
+        Write-Host "Risk            : " -NoNewline
+
+        $RiskColor = switch ($Selected.Risk) {
+
+            "LOW" {
+                "Green"
+            }
+
+            "MEDIUM" {
+                "Yellow"
+            }
+
+            "HIGH" {
+                "Red"
+            }
+
+            default {
+                "White"
+            }
+        }
+
+        Write-Host "$($Selected.Risk)" -ForegroundColor $RiskColor
+
+        Write-Host ""
+
+        Write-Host "Description     : $($Selected.Description)"
+
+        Write-Host ""
+
+        if ($Selected.Command) {
+
+            Write-Host "Command:"
+            Write-Host "  $($Selected.Command)" -ForegroundColor Yellow
+            Write-Host ""
+        }
+
+        if ($Selected.Commands) {
+
+            Write-Host "Commands:"
+
+            foreach ($Command in $Selected.Commands) {
+
+                Write-Host "  $Command" -ForegroundColor Yellow
+            }
+
+            Write-Host ""
+        }
+
+        Write-Host "WARNING: This operation will modify the system." -ForegroundColor Red
+        Write-Host ""
+
+        Write-Host "The repair engine will:"
+        Write-Host ""
+        Write-Host "  1. Create backup"
+        Write-Host "  2. Check System Restore"
+        Write-Host "  3. Capture BEFORE health"
+        Write-Host "  4. Execute repair"
+        Write-Host "  5. Capture AFTER health"
+        Write-Host "  6. Compare health score"
+        Write-Host ""
+
+        $Confirm = Read-Host "Continue? [Y/N]"
+
+        if ($Confirm -notmatch "^[Yy]$") {
+
+            Write-Host ""
+            Write-Host "Repair cancelled." -ForegroundColor Yellow
+
+            Start-Sleep -Seconds 1
+            continue
+        }
+
+        Show-REWinTitle
+
+        Write-Host " REPAIR IN PROGRESS" -ForegroundColor Cyan
+        Write-Host " ----------------------------------------------------------"
+        Write-Host ""
+
+        Write-Host "Repair          : $($Selected.Name)"
+        Write-Host "Risk            : $($Selected.Risk)"
+        Write-Host ""
+
+        Write-Host "Starting RepairEngine..." -ForegroundColor Yellow
+        Write-Host ""
+
+        try {
+
+            $Result = Invoke-REWinRepair -Id $Selected.Id
+
+        }
+        catch {
+
+            Write-Host ""
+            Write-Host "Repair engine error." -ForegroundColor Red
+            Write-Host ""
+            Write-Host $_.Exception.Message -ForegroundColor Red
+
+            Wait-REWin
+            continue
+        }
+
+        Show-REWinTitle
+
+        Write-Host " REPAIR RESULT" -ForegroundColor Cyan
+        Write-Host " ----------------------------------------------------------"
+        Write-Host ""
+
+        Write-Host "Repair          : $($Result.RepairName)"
+        Write-Host "Risk            : $($Result.Risk)"
+        Write-Host ""
+
+        Write-Host "Result          : " -NoNewline
+
+        if ($Result.Success) {
+
+            Write-Host "SUCCESS" -ForegroundColor Green
+
+        }
+        else {
+
+            Write-Host "FAILED" -ForegroundColor Red
+        }
+
+        Write-Host "Status          : $($Result.RepairStatus)"
+        Write-Host ""
+
+        Write-Host "Summary         : $($Result.RepairSummary)"
+        Write-Host ""
+
+        Write-Host "Backup Status   : " -NoNewline
+
+        if ($Result.BackupStatus -eq "CREATED") {
+
+            Write-Host "CREATED" -ForegroundColor Green
+
+        }
+        else {
+
+            Write-Host "$($Result.BackupStatus)" -ForegroundColor Yellow
+        }
+
+        Write-Host ""
+
+        Write-Host "Backup Path     : $($Result.BackupPath)"
+        Write-Host ""
+
+        Write-Host "Restore Point   : $($Result.RestorePoint)"
+
+        if ($Result.RestoreReason) {
+
+            Write-Host "Restore Reason  : $($Result.RestoreReason)"
+        }
+
+        Write-Host ""
+
+        Write-Host "Health Before   : " -NoNewline
+
+        if ($null -ne $Result.HealthBefore) {
+
+            Write-Host "$($Result.HealthBefore)"
+
+        }
+        else {
+
+            Write-Host "N/A"
+        }
+
+        Write-Host "Health After    : " -NoNewline
+
+        if ($null -ne $Result.HealthAfter) {
+
+            Write-Host "$($Result.HealthAfter)"
+
+        }
+        else {
+
+            Write-Host "N/A"
+        }
+
+        Write-Host "Health Delta    : " -NoNewline
+
+        if ($null -ne $Result.HealthDelta) {
+
+            if ($Result.HealthDelta -gt 0) {
+
+                Write-Host "+$($Result.HealthDelta)" -ForegroundColor Green
+
+            }
+            elseif ($Result.HealthDelta -lt 0) {
+
+                Write-Host "$($Result.HealthDelta)" -ForegroundColor Red
+
+            }
+            else {
+
+                Write-Host "0" -ForegroundColor Gray
+            }
+
+        }
+        else {
+
+            Write-Host "N/A"
+        }
+
+        Write-Host "Health Changed  : $($Result.HealthChanged)"
+        Write-Host ""
+
+        if ($Result.CommandResults) {
+
+            Write-Host "COMMAND RESULTS"
+            Write-Host " ----------------------------------------------------------"
+
+            foreach ($CommandResult in $Result.CommandResults) {
+
+                Write-Host ""
+
+                if ($CommandResult.FilePath) {
+
+                    Write-Host "File            : $($CommandResult.FilePath)"
+                }
+
+                if ($CommandResult.Arguments) {
+
+                    Write-Host "Arguments       : $($CommandResult.Arguments)"
+                }
+
+                Write-Host "Exit Code       : $($CommandResult.ExitCode)"
+
+                if ($CommandResult.Success) {
+
+                    Write-Host "Command Status  : SUCCESS" -ForegroundColor Green
+
+                }
+                else {
+
+                    Write-Host "Command Status  : FAILED" -ForegroundColor Red
+                }
+
+                if ($CommandResult.Summary) {
+
+                    Write-Host "Summary         : $($CommandResult.Summary)"
+                }
+
+                if ($CommandResult.Error) {
+
+                    Write-Host ""
+                    Write-Host "Error:" -ForegroundColor Red
+                    Write-Host $CommandResult.Error -ForegroundColor Red
+                }
+            }
+        }
+
+        Write-Host ""
+
+        if ($Result.RepairStatus -eq "SUCCESS") {
+
+            Write-Host "Repair completed successfully." -ForegroundColor Green
+
+        }
+        elseif ($Result.RepairStatus -eq "PARTIAL") {
+
+            Write-Host "Repair completed partially." -ForegroundColor Yellow
+
+        }
+        else {
+
+            Write-Host "Repair completed with errors." -ForegroundColor Red
+        }
+
+        Write-Host ""
+
+        if ($Selected.Id -eq 4) {
+
+            Write-Host "NOTE: Network stack reset may require a system restart." -ForegroundColor Yellow
+            Write-Host ""
+        }
+
+        Wait-REWin
+
+    }
+    while ($true)
+}
 
 # ============================================================
 # MAIN MENU
@@ -525,89 +962,133 @@ do {
 
     Show-REWinTitle
 
-    Show-REWinHealth
+    Write-Host " SYSTEM HEALTH : " -NoNewline
+
+    if ($null -eq $Global:REWinHealthReport) {
+
+        Write-Host "NOT SCANNED" -ForegroundColor Yellow
+
+    }
+    else {
+
+        if ($Global:REWinHealthReport.OverallScore -ge 90) {
+
+            Write-Host "$($Global:REWinHealthReport.OverallScore)/100 - $($Global:REWinHealthReport.OverallStatus)" -ForegroundColor Green
+
+        }
+        elseif ($Global:REWinHealthReport.OverallScore -ge 70) {
+
+            Write-Host "$($Global:REWinHealthReport.OverallScore)/100 - $($Global:REWinHealthReport.OverallStatus)" -ForegroundColor Cyan
+
+        }
+        elseif ($Global:REWinHealthReport.OverallScore -ge 50) {
+
+            Write-Host "$($Global:REWinHealthReport.OverallScore)/100 - $($Global:REWinHealthReport.OverallStatus)" -ForegroundColor Yellow
+
+        }
+        else {
+
+            Write-Host "$($Global:REWinHealthReport.OverallScore)/100 - $($Global:REWinHealthReport.OverallStatus)" -ForegroundColor Red
+        }
+    }
+
+    Write-Host ""
 
     Show-REWinAdministrator
 
+    Write-Host ""
 
-    Write-Host " DIAGNOSTICS" -ForegroundColor Cyan
     Write-Host " ----------------------------------------------------------"
+    Write-Host " MAIN MENU"
+    Write-Host " ----------------------------------------------------------"
+    Write-Host ""
 
     Write-Host " [1] Quick Health Check"
     Write-Host " [2] System Diagnostics"
     Write-Host " [3] Disk Diagnostics"
     Write-Host " [4] Network Diagnostics"
-    Write-Host " [5] Windows Update"
+    Write-Host " [5] Windows Update Diagnostics"
     Write-Host " [6] Event Log Diagnostics"
     Write-Host " [7] Crash Diagnostics"
     Write-Host " [8] Hardware Diagnostics"
     Write-Host " [9] Security Diagnostics"
-
-    Write-Host ""
-
-    Write-Host " REPORTS" -ForegroundColor Cyan
-    Write-Host " ----------------------------------------------------------"
-
-    Write-Host " [10] Generate HTML Health Report"
-
+    Write-Host " [10] HTML Health Report"
+    Write-Host " [11] Repair Center"
     Write-Host ""
     Write-Host " [0] Exit"
-
     Write-Host ""
 
-    $Choice = Read-Host "Select an option"
-
+    $Choice = Read-Host "Select option"
 
     switch ($Choice) {
 
         "1" {
-            Invoke-REWinQuickHealth
+
+            Invoke-REWinQuickHealthCheck
         }
 
         "2" {
-            Invoke-REWinSystem
+
+            Invoke-REWinSystemDiagnostics
         }
 
         "3" {
-            Invoke-REWinDisk
+
+            Invoke-REWinDiskDiagnostics
         }
 
         "4" {
-            Invoke-REWinNetwork
+
+            Invoke-REWinNetworkDiagnostics
         }
 
         "5" {
-            Invoke-REWinWindowsUpdate
+
+            Invoke-REWinWindowsUpdateDiagnostics
         }
 
         "6" {
-            Invoke-REWinEventLog
+
+            Invoke-REWinEventLogDiagnostics
         }
 
         "7" {
-            Invoke-REWinCrash
+
+            Invoke-REWinCrashDiagnostics
         }
 
         "8" {
-            Invoke-REWinHardware
+
+            Invoke-REWinHardwareDiagnostics
         }
 
         "9" {
-            Invoke-REWinSecurity
+
+            Invoke-REWinSecurityDiagnostics
         }
 
         "10" {
+
             Invoke-REWinHtmlReport
         }
 
+        "11" {
+
+            Invoke-REWinRepairCenter
+        }
+
         "0" {
+
             Write-Host ""
             Write-Host "Exiting REWin..." -ForegroundColor Cyan
+            Write-Host ""
         }
 
         default {
+
             Write-Host ""
             Write-Host "Invalid option." -ForegroundColor Red
+
             Start-Sleep -Seconds 1
         }
     }
